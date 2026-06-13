@@ -21,8 +21,8 @@ const CONFIG = {
   FAST_FALL_CATCH: 950,              // この落下速度を超えると「壁方向入力」しないとキャッチ不可（腕の見せ場）
 
   POGO_BOUNCE: -1080,               // ポゴ跳ね初速（壁キックより少し強く＝連鎖で稼げる）
-  POGO_ACTIVE: 0.12, POGO_COOLDOWN: 0.15,
-  POGO_W: 56, POGO_H: 30, POGO_REACH: 8,
+  POGO_ACTIVE: 0.22, POGO_COOLDOWN: 0.06,   // 長押し中ほぼ途切れず判定が出る(旧:44%→約79%)
+  POGO_W: 88, POGO_H: 60, POGO_REACH: 6,    // 判定箱を拡大＋足元すぐ下から下方に広く取る
 
   UPATK_ACTIVE: 0.12, UPATK_COOLDOWN: 0.20, UPATK_W: 52, UPATK_H: 36,
 
