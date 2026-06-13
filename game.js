@@ -47,25 +47,27 @@ const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 
 // ---- input ----
 const keys = {};
-let jumpBuffer = 0, pausePressed = false;
-const KICK = e => e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW';
+let jumpBuffer = 0, attackEdge = false;
+// 操作: A/D=移動, W/S=上下(攻撃方向), Shift=ジャンプ/壁キック, Enter=攻撃
+const PREVENT = ['ShiftLeft','ShiftRight','Enter','NumpadEnter','KeyW','KeyA','KeyS','KeyD','Space'];
 addEventListener('keydown', e => {
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
-  if (!keys[e.code]) { // edge
-    if (KICK(e)) jumpBuffer = CONFIG.JUMP_BUFFER;
-    if (e.code === 'KeyP') paused = !paused;
-    if (e.code === 'KeyR') reset();
-    if (e.code === 'KeyK') damage(1, 0);
-  }
+  if (PREVENT.includes(e.code)) e.preventDefault();
+  const fresh = !keys[e.code];
   keys[e.code] = true;
+  if (!fresh || e.repeat) return; // 押下エッジのみ
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') jumpBuffer = CONFIG.JUMP_BUFFER;
+  if (e.code === 'Enter' || e.code === 'NumpadEnter') attackEdge = true;
+  if (e.code === 'KeyP') paused = !paused;
+  if (e.code === 'KeyR') reset();
+  if (e.code === 'KeyK') damage(1, 0);
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 const held = {
-  left: () => keys['ArrowLeft'] || keys['KeyA'],
-  right: () => keys['ArrowRight'] || keys['KeyD'],
-  down: () => keys['ArrowDown'] || keys['KeyS'],
-  up: () => keys['ArrowUp'] || keys['KeyW'],
-  upatk: () => keys['KeyJ'],
+  left: () => keys['KeyA'],
+  right: () => keys['KeyD'],
+  up: () => keys['KeyW'],
+  down: () => keys['KeyS'],
+  attack: () => keys['Enter'] || keys['NumpadEnter'],
 };
 
 // ---- sprites (任意) ----
@@ -74,7 +76,7 @@ const sprites = {};
 SPRITE_STATES.forEach(s => {
   const img = new Image(); img.ok = false;
   img.onload = () => { img.ok = true; };
-  img.src = `../assets/sprites/${s}.png`;
+  img.src = `assets/sprites/${s}.png`;
   sprites[s] = img;
 });
 
@@ -183,12 +185,12 @@ function update(dt) {
         p.coyote = 0; jumpBuffer = 0;
       }
     }
-    // ポゴ
-    if (held.down() && p.pogoCd <= 0 && p.pogoTimer <= 0) {
+    // ポゴ（S+Enter を押しっぱで連打可）
+    if (held.down() && held.attack() && p.pogoCd <= 0 && p.pogoTimer <= 0) {
       p.pogoTimer = CONFIG.POGO_ACTIVE; p.pogoCd = CONFIG.POGO_COOLDOWN; p.pogoHitThisSwing = false;
     }
-    // 上攻撃
-    if (held.upatk() && p.upCd <= 0 && p.upTimer <= 0) {
+    // 上攻撃（W+Enter）
+    if (attackEdge && held.up() && p.upCd <= 0 && p.upTimer <= 0) {
       p.upTimer = CONFIG.UPATK_ACTIVE; p.upCd = CONFIG.UPATK_COOLDOWN;
     }
   }
@@ -254,6 +256,8 @@ function update(dt) {
   // カメラ
   const target = p.y - H * CONFIG.CAM_FOLLOW;
   cameraY += (target - cameraY) * Math.min(1, CONFIG.CAM_LERP * dt);
+
+  attackEdge = false; // 攻撃の押下エッジを消費
 }
 
 // ---- render ----
