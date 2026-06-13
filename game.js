@@ -17,6 +17,8 @@ const CONFIG = {
   WALLKICK_VX: 470, WALLKICK_VY: -1020,
   GROUND_JUMP_VY: -1040,
   COYOTE: 0.09, JUMP_BUFFER: 0.10,
+  CLING_GRIP_TIME: 3.0,                          // この秒数は固定でしがみつける
+  CLING_SLIDE_MAX: 300, CLING_SLIDE_ACCEL: 350,  // 以降ずり下がる(徐々に加速)
 
   POGO_BOUNCE: -1080,
   POGO_ACTIVE: 0.22, POGO_COOLDOWN: 0.06,
@@ -88,7 +90,7 @@ let player, cameraY, maxHeight, enemies, projectiles, spawnTopY, bandIndex, shak
 function reset() {
   player = {
     x: (CONFIG.WALL_L + CONFIG.WALL_R) / 2, y: 0, vx: 0, vy: 0, w: CONFIG.PLAYER_W, h: CONFIG.PLAYER_H,
-    state: 'air', facing: 1, grounded: true, clingWall: 0, coyote: 0, lastWall: 0,
+    state: 'air', facing: 1, grounded: true, clingWall: 0, clingHold: 0, coyote: 0, lastWall: 0,
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false, upTimer: 0, upCd: 0,
     hp: CONFIG.HP_MAX, fallStun: 0, iframe: 0,
   };
@@ -164,7 +166,10 @@ function update(dt) {
     p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL * 1.15);
     if (p.fallStun <= 0) { p.state = 'air'; p.hp = CONFIG.HP_MAX; }
   } else if (p.state === 'cling') {
-    p.vy = 0; p.vx = 0; p.lastWall = p.clingWall;
+    p.vx = 0; p.lastWall = p.clingWall;
+    p.clingHold += dt;
+    const over = p.clingHold - CONFIG.CLING_GRIP_TIME;
+    p.vy = over > 0 ? Math.min(CONFIG.CLING_SLIDE_MAX, over * CONFIG.CLING_SLIDE_ACCEL) : 0; // 3秒固定→以降ずり下がる
     const grip = (p.clingWall < 0 && held.left()) || (p.clingWall > 0 && held.right());
     if (jumpBuffer > 0) {
       const dir = -p.clingWall;
@@ -204,7 +209,7 @@ function update(dt) {
   else if (p.x + p.w / 2 >= CONFIG.WALL_R) { p.x = CONFIG.WALL_R - p.w / 2; side = 1; }
   if (side !== 0 && p.state === 'air') {
     const toward = (side < 0 && held.left()) || (side > 0 && held.right());
-    if (toward) { p.state = 'cling'; p.clingWall = side; p.vx = 0; p.vy = 0; p.facing = -side; }
+    if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
     else p.vx = 0; // 壁方向を押してなければ掴まず、壁を滑り落ちる
   }
   // 床
@@ -343,7 +348,12 @@ function drawHUD() {
   ctx.fillStyle = '#eaf2ff'; ctx.font = 'bold 22px system-ui'; ctx.fillText(`${(maxHeight / 100).toFixed(1)} m`, 14, 30);
   ctx.fillStyle = '#7f8ca0'; ctx.font = '12px system-ui'; ctx.fillText(`now ${(Math.max(0, -player.y) / 100).toFixed(1)} m`, 14, 48);
   for (let i = 0; i < CONFIG.HP_MAX; i++) { ctx.fillStyle = i < player.hp ? '#e74c3c' : '#3a4150'; roundRect(14 + i * 20, 60, 15, 15, 3); ctx.fill(); }
-  if (player.state === 'cling') { ctx.fillStyle = '#5dade2'; ctx.font = '11px system-ui'; ctx.fillText('つかまり中（A/D長押し）', 14, 92); }
+  if (player.state === 'cling') {
+    const g = Math.max(0, 1 - player.clingHold / CONFIG.CLING_GRIP_TIME);
+    ctx.fillStyle = '#2c3440'; ctx.fillRect(14, 86, 80, 6);
+    ctx.fillStyle = g > 0 ? '#5dade2' : '#e67e22'; ctx.fillRect(14, 86, 80 * g, 6);
+    ctx.font = '11px system-ui'; ctx.fillText(g > 0 ? 'つかまり中' : 'ずり落ち！', 100, 92);
+  }
   ctx.fillStyle = '#566273'; ctx.font = '11px system-ui'; ctx.fillText(player.state, W - 70, 24);
 }
 
