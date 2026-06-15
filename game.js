@@ -39,6 +39,9 @@ const CONFIG = {
   HOMURA_MP: 34, HOMURA_MULT: 1.8, HOMURA_V: 380, HOMURA_CD: 0.5, HOMURA_R: 16, HOMURA_PIERCE: 2, // D：焔（遅い大弾・貫通）
   SPIN_MP: 30, SPIN_MULT: 1.2, SPIN_R: 96, SPIN_ACTIVE: 0.18, SPIN_CD: 0.40,        // S：回転斬り（周囲AoE）
   MAYU_MP: 26, MAYU_DUR: 4.0, MAYU_REDUCE: 0.5, MAYU_CD: 6.0,                       // W：守護の繭（被ダメ減）
+  RAIJIN_MP: 28, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
+  TRI_MP: 30, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
+  UNLOCK_SP: 10,
 
   // --- 敵HP（ATK_BASE基準＝何発で倒れるか）---
   HP_TARGET: 2, HP_OBSTACLE: 3, HP_FLOATER: 3, HP_ATTACKER: 4,
@@ -59,14 +62,16 @@ const CONFIG = {
   PLAYER_DRAW_H: 108, CAM_FOLLOW: 0.60, CAM_LERP: 9,
 };
 
-// スキル4枠の割当（Ctrl+方向）。name=表示, fn=発動
-const SLOTS = { W: 'mayu', A: 'kenpa', S: 'spin', D: 'homura' };
-const SLOT_HUD = [
-  { k: 'W', label: '守護', mp: 'MAYU_MP', cd: 'mayuCd' },
-  { k: 'A', label: '剣波', mp: 'KENPA_MP', cd: 'kenpaCd' },
-  { k: 'S', label: '回転', mp: 'SPIN_MP', cd: 'spinCd' },
-  { k: 'D', label: '焔', mp: 'HOMURA_MP', cd: 'homuraCd' },
-];
+// スキルレジストリ（id → 表示名 / MP CONFIGキー / CTフィールド / CT最大CONFIGキー）。割当は meta.slots（横穴で変更）
+const SKILL_META = {
+  mayu: { name: '守護の繭', mp: 'MAYU_MP', cd: 'mayuCd', cdMax: 'MAYU_CD' },
+  kenpa: { name: '剣波', mp: 'KENPA_MP', cd: 'kenpaCd', cdMax: 'KENPA_CD' },
+  spin: { name: '回転斬り', mp: 'SPIN_MP', cd: 'spinCd', cdMax: 'SPIN_CD' },
+  homura: { name: '焔', mp: 'HOMURA_MP', cd: 'homuraCd', cdMax: 'HOMURA_CD' },
+  raijin: { name: '落雷', mp: 'RAIJIN_MP', cd: 'raijinCd', cdMax: 'RAIJIN_CD' },
+  tri: { name: '三連剣波', mp: 'TRI_MP', cd: 'triCd', cdMax: 'TRI_CD' },
+};
+const SKILL_IDS = Object.keys(SKILL_META);
 
 const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
@@ -118,6 +123,7 @@ function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta))
 let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, mpShards: 0, heartsBonus: 0, mpBonus: 0,
+  unlocked: ['mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'kenpa', S: 'spin', D: 'homura' },
 }, loadMeta());
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
 const maxMP = () => CONFIG.MP_MAX + meta.mpBonus * CONFIG.MP_PER_VESSEL;
@@ -131,7 +137,7 @@ function reset() {
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
-    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0,
+    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0,
     hpQ: maxQ(), mp: maxMP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
@@ -160,7 +166,12 @@ function castKenpa() { const p = player; if (p.kenpaCd > 0 || p.mp < CONFIG.KENP
 function castHomura() { const p = player; if (p.homuraCd > 0 || p.mp < CONFIG.HOMURA_MP) return; p.mp -= CONFIG.HOMURA_MP; p.homuraCd = CONFIG.HOMURA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.HOMURA_V, vy: 0, r: CONFIG.HOMURA_R, alive: true, friendly: true, mult: CONFIG.HOMURA_MULT, pierce: CONFIG.HOMURA_PIERCE, flame: true }); }
 function castSpin() { const p = player; if (p.spinCd > 0 || p.mp < CONFIG.SPIN_MP) return; p.mp -= CONFIG.SPIN_MP; p.spinCd = CONFIG.SPIN_CD; p.spinTimer = CONFIG.SPIN_ACTIVE; for (const e of enemies) if (e.alive && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.SPIN_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT); shake = Math.max(shake, 5); }
 function castMayu() { const p = player; if (p.mayuCd > 0 || p.mp < CONFIG.MAYU_MP) return; p.mp -= CONFIG.MAYU_MP; p.mayuCd = CONFIG.MAYU_CD; p.mayuTimer = CONFIG.MAYU_DUR; }
-const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu };
+function castRaijin() { const p = player; if (p.raijinCd > 0 || p.mp < CONFIG.RAIJIN_MP) return; p.mp -= CONFIG.RAIJIN_MP; p.raijinCd = CONFIG.RAIJIN_CD;
+  const near = enemies.filter(e => e.alive && e.y > cameraY - 20 && e.y < cameraY + H + 20).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, CONFIG.RAIJIN_TARGETS);
+  for (const e of near) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.RAIJIN_MULT); if (near.length) shake = Math.max(shake, 6); }
+function castTri() { const p = player; if (p.triCd > 0 || p.mp < CONFIG.TRI_MP) return; p.mp -= CONFIG.TRI_MP; p.triCd = CONFIG.TRI_CD;
+  for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT, pierce: 0 }); }
+const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri };
 
 function makeEnemy(type, x, y) {
   const base = { type, x, y, baseX: x, baseY: y, alive: true, flash: 0, phase: Math.random() * 6.28, fireCd: CONFIG.ATTACKER_FIRE_CD * (0.4 + Math.random() * 0.6) };
@@ -189,7 +200,7 @@ function update(dt) {
   const p = player;
   if (jumpBuffer > 0) jumpBuffer -= dt;
   if (p.iframe > 0) p.iframe -= dt;
-  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
+  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
   if (shake > 0) shake = Math.max(0, shake - 60 * dt);
   if (hp0flash > 0) hp0flash -= dt;
   if (p.mp < maxMP()) p.mp = Math.min(maxMP(), p.mp + CONFIG.MP_REGEN * dt);
@@ -224,7 +235,7 @@ function update(dt) {
     if (held.down() && (attackEdge || keys['Enter'] || keys['NumpadEnter']) && p.pogoCd <= 0 && p.pogoTimer <= 0) { p.pogoTimer = CONFIG.POGO_ACTIVE; p.pogoCd = CONFIG.POGO_COOLDOWN; p.pogoHitThisSwing = false; }
     if (attackEdge && held.up() && p.upCd <= 0 && p.upTimer <= 0) { p.upTimer = CONFIG.UPATK_ACTIVE; p.upCd = CONFIG.UPATK_COOLDOWN; p.upHitThisSwing = false; }
     if (attackEdge && !held.up() && !held.down() && p.nailCd <= 0 && p.nailTimer <= 0) { p.nailTimer = CONFIG.NAIL_ACTIVE; p.nailCd = CONFIG.NAIL_COOLDOWN; p.nailHitThisSwing = false; }
-    for (const dir of ['W','A','S','D']) if (skillEdge[dir]) CASTERS[SLOTS[dir]]();
+    for (const dir of ['W','A','S','D']) if (skillEdge[dir]) { const id = meta.slots[dir]; if (CASTERS[id]) CASTERS[id](); }
   }
   attackEdge = false; skillEdge.W = skillEdge.A = skillEdge.S = skillEdge.D = false;
 
@@ -360,16 +371,16 @@ function drawSkillRadial() {
   const cx = W / 2, cy = H * 0.46, R = 80;
   const pos = { W: [cx, cy - R], S: [cx, cy + R], A: [cx - R, cy], D: [cx + R, cy] };
   const arrow = { W: '↑', S: '↓', A: '←', D: '→' };
-  const cdref = { W: CONFIG.MAYU_CD, A: CONFIG.KENPA_CD, S: CONFIG.SPIN_CD, D: CONFIG.HOMURA_CD };
   ctx.strokeStyle = 'rgba(130,150,180,.25)'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(cx, cy - R + 16); ctx.lineTo(cx, cy + R - 16); ctx.moveTo(cx - R + 32, cy); ctx.lineTo(cx + R - 32, cy); ctx.stroke();
   ctx.textAlign = 'center';
-  for (const s of SLOT_HUD) {
-    const [x, y] = pos[s.k], cost = CONFIG[s.mp], cd = player[s.cd] || 0, usable = player.mp >= cost && cd <= 0, w = 80, h = 34;
+  for (const k of ['W', 'A', 'S', 'D']) {
+    const m = SKILL_META[meta.slots[k]]; if (!m) continue;
+    const [x, y] = pos[k], cost = CONFIG[m.mp], cd = player[m.cd] || 0, usable = player.mp >= cost && cd <= 0, w = 80, h = 34;
     ctx.fillStyle = usable ? 'rgba(40,56,76,.94)' : 'rgba(20,26,34,.9)'; roundRect(x - w / 2, y - h / 2, w, h, 7); ctx.fill();
     ctx.strokeStyle = usable ? '#5dade2' : '#39424f'; ctx.lineWidth = 1.5; ctx.stroke();
-    if (cd > 0) { ctx.fillStyle = 'rgba(0,0,0,.5)'; roundRect(x - w / 2, y - h / 2, w * Math.min(1, cd / cdref[s.k]), h, 7); ctx.fill(); }
-    ctx.fillStyle = usable ? '#eaf4ff' : '#6b7686'; ctx.font = 'bold 14px system-ui'; ctx.fillText(`${arrow[s.k]} ${s.label}`, x, y - 1);
+    if (cd > 0) { ctx.fillStyle = 'rgba(0,0,0,.5)'; roundRect(x - w / 2, y - h / 2, w * Math.min(1, cd / (CONFIG[m.cdMax] || 1)), h, 7); ctx.fill(); }
+    ctx.fillStyle = usable ? '#eaf4ff' : '#6b7686'; ctx.font = 'bold 14px system-ui'; ctx.fillText(`${arrow[k]} ${m.name}`, x, y - 1);
     ctx.font = '10px system-ui'; ctx.fillStyle = usable ? '#9fc4dd' : '#566273'; ctx.fillText(`MP ${cost}`, x, y + 12);
   }
   ctx.textAlign = 'left';
@@ -382,7 +393,10 @@ function buildHideoutRows() {
     act: () => { meta.gold -= CONFIG.HEART_SHARD_GOLD; if (++meta.heartShards >= 4) { meta.heartShards = 0; meta.heartsBonus++; } player.hpQ = maxQ(); } });
   rows.push({ label: `MPカケラ 購入  [${meta.mpShards}/4]  最大MP ${maxMP()}`, cost: `SP${CONFIG.MP_SHARD_SP}`, can: meta.sp >= CONFIG.MP_SHARD_SP,
     act: () => { meta.sp -= CONFIG.MP_SHARD_SP; if (++meta.mpShards >= 4) { meta.mpShards = 0; meta.mpBonus++; } player.mp = maxMP(); } });
-  rows.push({ header: '────────（スキル解放/チャームは実装予定）────────' });
+  rows.push({ header: '── スキル（SP解放 / 枠割当）──' });
+  for (const id of SKILL_IDS) if (!meta.unlocked.includes(id)) rows.push({ label: `解放: ${SKILL_META[id].name}`, cost: `SP${CONFIG.UNLOCK_SP}`, can: meta.sp >= CONFIG.UNLOCK_SP, act: () => { meta.sp -= CONFIG.UNLOCK_SP; meta.unlocked.push(id); } });
+  for (const dir of ['W', 'A', 'S', 'D']) rows.push({ label: `枠 ${dir}: ${SKILL_META[meta.slots[dir]].name}  ▸切替`, cost: '', can: meta.unlocked.length > 1, act: () => { const u = meta.unlocked, i = u.indexOf(meta.slots[dir]); meta.slots[dir] = u[(i + 1) % u.length]; } });
+  rows.push({ header: '────────（チャームは実装予定）────────' });
   rows.push({ label: 'クライムに戻る', cost: '', can: true, act: () => { inHideout = false; } });
   return rows;
 }
