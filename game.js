@@ -7,14 +7,14 @@
 
 const CONFIG = {
   CANVAS_W: 450, CANVAS_H: 800,
-  WALL_L: 60, WALL_R: 390,
+  WALL_L: 50, WALL_R: 400,   // 壁幅の基準(=1)。今後広げる時はここ＋MAX_AIR_X＋WALLKICK_VXを一緒にスケール
   PLAYER_W: 40, PLAYER_H: 64,
 
   GRAVITY: 2600,
   MAX_FALL: 1500,
-  AIR_ACCEL: 2600, MAX_AIR_X: 360, AIR_FRICTION: 1500,
+  AIR_ACCEL: 2600, MAX_AIR_X: 400, AIR_FRICTION: 1500,
 
-  WALLKICK_VX: 470, WALLKICK_VY: -1020,
+  WALLKICK_VX: 520, WALLKICK_VY: -1020,
   GROUND_JUMP_VY: -1040,
   COYOTE: 0.09, JUMP_BUFFER: 0.10,
   CLING_GRIP_TIME: 3.0,
@@ -99,10 +99,10 @@ const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 const SEG_H = 720;   // 1セグメント高(px) ≈0.9画面
 const SEG_FEATURES = [
   { inset: 0,   sway: 0 },    // 開けた区間(ベースのみ)
-  { inset: 26,  sway: 0 },    // 隘路：両壁が内へ
-  { inset: -26, sway: 0 },    // 広間：両壁が外へ
-  { inset: 0,   sway: -28 },  // 左寄り：水路が左へ
-  { inset: 0,   sway: 28 },   // 右寄り：水路が右へ
+  { inset: 24,  sway: 0 },    // 隘路：両壁が内へ
+  { inset: -16, sway: 0 },    // 広間：両壁が外へ(基準幅が広いので控えめ)
+  { inset: 0,   sway: -18 },  // 左寄り：水路が左へ
+  { inset: 0,   sway: 18 },   // 右寄り：水路が右へ
 ];
 function segFeat(i) { const r = Math.abs(Math.sin(i * 12.9898) * 43758.5453); return SEG_FEATURES[Math.floor(r % SEG_FEATURES.length)]; }   // 決定論的乱択(同iは常に同パターン)
 function segShape(y) { const d = -y, i = Math.floor(d / SEG_H), t = (d - i * SEG_H) / SEG_H, f = segFeat(i), env = Math.sin(Math.PI * t); return { inset: f.inset * env, sway: f.sway * env }; }
