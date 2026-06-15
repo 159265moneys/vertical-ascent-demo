@@ -72,7 +72,7 @@ const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 const keys = {};
 let jumpBuffer = 0, attackEdge = false, paused = false;
 const skillEdge = { W: false, A: false, S: false, D: false };
-const skillMod = () => keys['ShiftLeft'];   // 左Shift＝スキル修飾 ／ 右Shift＝ジャンプ（ブラウザ安全）
+const skillMod = () => keys['Space'];   // Space＝スキル修飾(親指で押しやすい) ／ 右Shift＝ジャンプ。ブラウザ安全
 const PREVENT = ['ShiftLeft','ShiftRight','Enter','NumpadEnter','KeyW','KeyA','KeyS','KeyD','Space'];
 addEventListener('keydown', e => {
   if (PREVENT.includes(e.code)) e.preventDefault();
