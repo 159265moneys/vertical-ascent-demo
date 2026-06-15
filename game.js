@@ -310,6 +310,7 @@ function render() {
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
   drawHUD();
+  if (skillMod()) drawSkillRadial();
   if (paused) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('PAUSE (P)', W / 2, H / 2); ctx.textAlign = 'left'; }
 }
 function drawHUD() {
@@ -320,20 +321,25 @@ function drawHUD() {
   ctx.fillStyle = '#22303f'; ctx.fillRect(14, 64, 96, 7);
   ctx.fillStyle = '#48b1d6'; ctx.fillRect(14, 64, 96 * (player.mp / CONFIG.MP_MAX), 7);
   if (player.state === 'cling') { const gg = Math.max(0, 1 - player.clingHold / CONFIG.CLING_GRIP_TIME); ctx.font = '11px system-ui'; ctx.fillStyle = gg > 0 ? '#5dade2' : '#e67e22'; ctx.fillText(gg > 0 ? 'つかまり中' : 'ずり落ち！', 118, 72); }
-  drawSkillBar();
 }
-function drawSkillBar() {
-  // Ctrl+WASD の4枠を常時表示（覚えなくていい）
-  ctx.font = '10px system-ui'; ctx.fillStyle = '#7f8ca0'; ctx.textAlign = 'left'; ctx.fillText('左Shift+', 8, 90);
-  const x0 = 64, cw = 88, gap = 4;
-  SLOT_HUD.forEach((s, i) => {
-    const x = x0 + i * (cw + gap), y = 82, cost = CONFIG[s.mp], cd = player[s.cd] || 0;
-    const usable = player.mp >= cost && cd <= 0;
-    ctx.fillStyle = usable ? '#2b3a4d' : '#1b232e'; roundRect(x, y, cw, 18, 4); ctx.fill();
-    if (cd > 0) { ctx.fillStyle = 'rgba(0,0,0,.45)'; const ref = s.k === 'S' ? CONFIG.SPIN_CD : s.k === 'A' ? CONFIG.KENPA_CD : s.k === 'D' ? CONFIG.HOMURA_CD : CONFIG.MAYU_CD; roundRect(x, y, cw * Math.min(1, cd / ref), 18, 4); ctx.fill(); }
-    ctx.fillStyle = usable ? '#cfe6ff' : '#5a6675'; ctx.font = 'bold 11px system-ui'; ctx.fillText(s.k, x + 6, y + 13);
-    ctx.font = '11px system-ui'; ctx.fillText(`${s.label} ${cost}`, x + 18, y + 13);
-  });
+// 左Shiftホールド中：画面中央に上下左右(W↑/S↓/A←/D→)でセット済みスキルを簡易ポップ表示
+function drawSkillRadial() {
+  const cx = W / 2, cy = H * 0.46, R = 80;
+  const pos = { W: [cx, cy - R], S: [cx, cy + R], A: [cx - R, cy], D: [cx + R, cy] };
+  const arrow = { W: '↑', S: '↓', A: '←', D: '→' };
+  const cdref = { W: CONFIG.MAYU_CD, A: CONFIG.KENPA_CD, S: CONFIG.SPIN_CD, D: CONFIG.HOMURA_CD };
+  ctx.strokeStyle = 'rgba(130,150,180,.25)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx, cy - R + 16); ctx.lineTo(cx, cy + R - 16); ctx.moveTo(cx - R + 32, cy); ctx.lineTo(cx + R - 32, cy); ctx.stroke();
+  ctx.textAlign = 'center';
+  for (const s of SLOT_HUD) {
+    const [x, y] = pos[s.k], cost = CONFIG[s.mp], cd = player[s.cd] || 0, usable = player.mp >= cost && cd <= 0, w = 80, h = 34;
+    ctx.fillStyle = usable ? 'rgba(40,56,76,.94)' : 'rgba(20,26,34,.9)'; roundRect(x - w / 2, y - h / 2, w, h, 7); ctx.fill();
+    ctx.strokeStyle = usable ? '#5dade2' : '#39424f'; ctx.lineWidth = 1.5; ctx.stroke();
+    if (cd > 0) { ctx.fillStyle = 'rgba(0,0,0,.5)'; roundRect(x - w / 2, y - h / 2, w * Math.min(1, cd / cdref[s.k]), h, 7); ctx.fill(); }
+    ctx.fillStyle = usable ? '#eaf4ff' : '#6b7686'; ctx.font = 'bold 14px system-ui'; ctx.fillText(`${arrow[s.k]} ${s.label}`, x, y - 1);
+    ctx.font = '10px system-ui'; ctx.fillStyle = usable ? '#9fc4dd' : '#566273'; ctx.fillText(`MP ${cost}`, x, y + 12);
+  }
+  ctx.textAlign = 'left';
 }
 
 const STEP = 1 / 120;
