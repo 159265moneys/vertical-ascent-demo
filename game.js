@@ -93,6 +93,10 @@ const DPR = Math.min(window.devicePixelRatio || 1, 2);
 cv.width = CONFIG.CANVAS_W * DPR; cv.height = CONFIG.CANVAS_H * DPR; ctx.scale(DPR, DPR);
 const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 
+// 壁は高度で滑らかに幅変化（連続関数＝衝突がポップしない）。両側が独立に出入り＝狭い/広い/片寄り
+function wallL(y) { return CONFIG.WALL_L + Math.sin(y * 0.0042) * 22 + Math.sin(y * 0.014 + 1.7) * 10; }
+function wallR(y) { return CONFIG.WALL_R - Math.sin(y * 0.0037 + 2.3) * 22 - Math.sin(y * 0.012 + 0.5) * 10; }
+
 // 操作: A/D=移動, W/S=上下(攻撃方向), Shift=ジャンプ/壁キック, Enter=攻撃(↓ポゴ/↑上/前ネイル)
 //       Ctrl+W/A/S/D = スキル4枠
 const keys = {};
@@ -198,8 +202,8 @@ function makeEnemy(type, x, y) {
   return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER, windup: 0 };
 }
 function spawnBand(y, idx) {
-  const span = CONFIG.WALL_R - CONFIG.WALL_L - 60;
-  const rx = () => CONFIG.WALL_L + 30 + Math.random() * span;
+  const wl = wallL(y), wr = wallR(y), span = Math.max(20, wr - wl - 60);
+  const rx = () => wl + 30 + Math.random() * span;
   const sparse = idx % 3 === 0;
   const r = Math.random();
   let type = r < 0.34 ? 'target' : r < 0.58 ? 'obstacle' : r < 0.80 ? 'floater' : 'attacker';
@@ -260,9 +264,9 @@ function update(dt) {
 
   p.x += p.vx * dt; p.y += p.vy * dt;
 
-  let side = 0;
-  if (p.x - p.w / 2 <= CONFIG.WALL_L) { p.x = CONFIG.WALL_L + p.w / 2; side = -1; }
-  else if (p.x + p.w / 2 >= CONFIG.WALL_R) { p.x = CONFIG.WALL_R - p.w / 2; side = 1; }
+  let side = 0; const wl = wallL(p.y), wr = wallR(p.y);
+  if (p.x - p.w / 2 <= wl) { p.x = wl + p.w / 2; side = -1; }
+  else if (p.x + p.w / 2 >= wr) { p.x = wr - p.w / 2; side = 1; }
   if (side !== 0 && p.state === 'air') {
     const toward = (side < 0 && keys['KeyA']) || (side > 0 && keys['KeyD']);
     if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
@@ -302,10 +306,10 @@ function update(dt) {
           if (pr.pierce > 0) pr.pierce--; else { pr.alive = false; break; }
         }
       }
-      if (pr.x < CONFIG.WALL_L || pr.x > CONFIG.WALL_R) pr.alive = false;
+      if (pr.x < wallL(pr.y) || pr.x > wallR(pr.y)) pr.alive = false;
     } else {
       if (overlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.r * 2, pr.r * 2)) { damage(CONFIG.DMG_PROJECTILE, -360); pr.alive = false; }
-      if (pr.x < CONFIG.WALL_L - 20 || pr.x > CONFIG.WALL_R + 20) pr.alive = false;
+      if (pr.x < wallL(pr.y) - 20 || pr.x > wallR(pr.y) + 20) pr.alive = false;
     }
     if (pr.y > cameraY + H + 80 || pr.y < cameraY - 120) pr.alive = false;
   }
@@ -322,13 +326,17 @@ function fireAt(e) { const dx = player.x - e.x, dy = player.y - e.y, d = Math.hy
 // ---- render ----
 function sy(worldY) { return worldY - cameraY; }
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-function drawWall(xInner, dir) {
-  const x0 = dir < 0 ? 0 : xInner, w = dir < 0 ? xInner : W - xInner;
-  ctx.fillStyle = '#161c26'; ctx.fillRect(x0, 0, w, H);
+function drawWalls() {
+  const step = 12;
+  ctx.fillStyle = '#161c26';
+  ctx.beginPath(); ctx.moveTo(0, 0); for (let s = 0; s <= H; s += step) ctx.lineTo(wallL(cameraY + s), s); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W, 0); for (let s = 0; s <= H; s += step) ctx.lineTo(wallR(cameraY + s), s); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
   ctx.strokeStyle = '#222c3a'; ctx.lineWidth = 2;
   const start = Math.floor(cameraY / 100) * 100;
-  for (let wy = start; wy < cameraY + H; wy += 100) { const y = sy(wy); ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + w, y); ctx.stroke(); }
-  ctx.fillStyle = '#2a3547'; ctx.fillRect(dir < 0 ? xInner - 3 : xInner, 0, 3, H);
+  for (let wy = start; wy < cameraY + H; wy += 100) { const y = sy(wy); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(wallL(wy), y); ctx.moveTo(wallR(wy), y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.strokeStyle = '#2a3547'; ctx.lineWidth = 3;
+  ctx.beginPath(); for (let s = 0; s <= H; s += step) { const x = wallL(cameraY + s); s === 0 ? ctx.moveTo(x, s) : ctx.lineTo(x, s); } ctx.stroke();
+  ctx.beginPath(); for (let s = 0; s <= H; s += step) { const x = wallR(cameraY + s); s === 0 ? ctx.moveTo(x, s) : ctx.lineTo(x, s); } ctx.stroke();
 }
 function drawEnemy(e) {
   const y = sy(e.y), x = e.x, flash = e.flash > 0;
@@ -353,8 +361,8 @@ function render() {
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0b0e13'); g.addColorStop(1, '#10151d');
   ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
-  drawWall(CONFIG.WALL_L, -1); drawWall(CONFIG.WALL_R, 1);
-  if (sy(0) < H) { ctx.fillStyle = '#2a3547'; ctx.fillRect(CONFIG.WALL_L, sy(0), CONFIG.WALL_R - CONFIG.WALL_L, H); }
+  drawWalls();
+  if (sy(0) < H) { ctx.fillStyle = '#2a3547'; ctx.fillRect(wallL(0), sy(0), wallR(0) - wallL(0), H); }
   for (const e of enemies) { const y = sy(e.y); if (y < -60 || y > H + 60) continue; drawEnemy(e); }
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
   drawPlayer();
