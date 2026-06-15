@@ -60,7 +60,7 @@ const CONFIG = {
 
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
-  BAND_GAP: 180, SHAKE_HIT: 9, SHAKE_FALL: 18,
+  BAND_GAP: 180, ENEMY_KEEP: 12000, SHAKE_HIT: 9, SHAKE_FALL: 18,
 
   PLAYER_DRAW_H: 108, CAM_FOLLOW: 0.60, CAM_LERP: 9,
 };
@@ -298,6 +298,7 @@ function update(dt) {
   const pg = pogoBox(), ub = upBox(), nb = nailBox();
   for (const e of enemies) {
     if (!e.alive) continue;
+    if (e.y > cameraY + H + 80) continue;   // 画面下へ去った生存敵＝凍結保持（スルー敵は座標に残り、降りれば再会／倒すまで消えない）
     if (e.flash > 0) e.flash -= dt;
     if (e.type === 'target') e.y += CONFIG.FALLER_VY * dt;
     else if (e.type === 'obstacle') e.y += CONFIG.OBSTACLE_VY * dt;
@@ -331,7 +332,7 @@ function update(dt) {
     if (pr.y > cameraY + H + 80 || pr.y < cameraY - 120) pr.alive = false;
   }
 
-  enemies = enemies.filter(e => e.alive && e.y < cameraY + H + 260);
+  enemies = enemies.filter(e => e.alive && e.y < cameraY + H + CONFIG.ENEMY_KEEP);   // 死んだ敵=倒したら恒久消滅／生存(スルー)敵は遥か下まで保持→降りれば再会
   projectiles = projectiles.filter(pr => pr.alive);
 
   const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
