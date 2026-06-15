@@ -112,6 +112,7 @@ function rosterAt(m) { return m < 25 ? ['target'] : m < 60 ? ['target', 'target'
 //       Ctrl+W/A/S/D = スキル4枠
 const keys = {};
 let jumpBuffer = 0, attackEdge = false, paused = false;
+let invincible = false, autoRise = false;   // デバッグ専用（本番では外す）
 const skillEdge = { W: false, A: false, S: false, D: false };
 const skillMod = () => keys['Space'];   // Space＝スキル修飾(親指で押しやすい) ／ 右Shift＝ジャンプ。ブラウザ安全
 const PREVENT = ['ShiftLeft','ShiftRight','Enter','NumpadEnter','KeyW','KeyA','KeyS','KeyD','Space'];
@@ -127,6 +128,8 @@ addEventListener('keydown', e => {
   if (e.code === 'ShiftRight') jumpBuffer = CONFIG.JUMP_BUFFER;   // ジャンプ／壁キック＝右Shift
   if (e.code === 'Enter' || e.code === 'NumpadEnter') attackEdge = true;
   if (e.code === 'KeyP') paused = !paused;
+  if (e.code === 'KeyI') invincible = !invincible;   // デバッグ：永続無敵トグル
+  if (e.code === 'KeyO') autoRise = !autoRise;       // デバッグ：無限上昇トグル
   if (e.code === 'KeyR') reset();
   if (e.code === 'KeyB') damage(1, 0);   // デバッグ：1/4
   if (e.code === 'KeyN') damage(99, 0);  // デバッグ：即HP0
@@ -177,7 +180,7 @@ function reset() {
 }
 
 function damage(q, knockY) {
-  if (player.iframe > 0 || player.state === 'fallStun' || q <= 0) return;
+  if (invincible || player.iframe > 0 || player.state === 'fallStun' || q <= 0) return;   // 無敵=デバッグ
   if (hasCharm('def')) q = Math.max(0, q - CONFIG.DEF_REDUCE);              // 防御チャーム
   if (player.mayuTimer > 0) q = Math.floor(q * (1 - CONFIG.MAYU_REDUCE));   // 守護の繭：被ダメ減
   if (q <= 0) { player.iframe = CONFIG.IFRAME * 0.4; return; }
@@ -274,6 +277,7 @@ function update(dt) {
   }
   attackEdge = false; skillEdge.W = skillEdge.A = skillEdge.S = skillEdge.D = false;
 
+  if (autoRise) { p.state = 'air'; p.clingWall = 0; p.fallStun = 0; p.grounded = false; p.vy = -2000; p.vx = inX * 260; p.iframe = CONFIG.IFRAME; }   // デバッグ：一定速で上昇（左右は手動微調整可）
   p.x += p.vx * dt; p.y += p.vy * dt;
   if (p.state === 'cling') p.x = p.clingWall < 0 ? wallL(p.y) + p.w / 2 : wallR(p.y) - p.w / 2;   // 波形壁に密着＝ズリ落ち中も浮かない
 
@@ -391,6 +395,7 @@ function render() {
   if (inHideout) drawHideout();
   else if (skillMod()) drawSkillRadial();
   if (paused) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('PAUSE (P)', W / 2, H / 2); ctx.textAlign = 'left'; }
+  if (invincible || autoRise) { ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'right'; ctx.fillText('DEBUG ' + (invincible ? '∞無敵(I) ' : '') + (autoRise ? '↑上昇(O)' : ''), W - 8, H - 10); ctx.textAlign = 'left'; }
 }
 function drawHUD() {
   ctx.textAlign = 'left';
