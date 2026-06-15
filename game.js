@@ -28,7 +28,7 @@ const CONFIG = {
   NAIL_ACTIVE: 0.12, NAIL_COOLDOWN: 0.20, NAIL_W: 64, NAIL_H: 50, NAIL_REACH: 6, NAIL_MULT: 1.0,
 
   // --- HP（ハート・1/4刻み）---
-  HEARTS_MAX: 3, QPH: 4,
+  HEARTS_MAX: 3, HEARTS_CAP: 10, QPH: 4,   // 器(ハート)の進行上限=10。これ超は将来スキル分(落下ペナには非反映)
   FALL_SEC_PER_HEART: 1.0, IFRAME: 0.9,   // T12=時間型：死亡で器(ハート)数×1s落下・上限なし→空中で立て直し+HP全回復(床到達でも復帰)
 
   // --- MP（共有CT・自動回復）---
@@ -60,7 +60,7 @@ const CONFIG = {
 
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
-  BAND_GAP: 180, ENEMY_KEEP: 24000, SHAKE_HIT: 9, SHAKE_FALL: 18,   // 保持窓=落下上限撤廃に合わせ拡大(~14器/パラ無の落下≈240mまで登り直しに敵が残る。超高器は末端のみ空)
+  BAND_GAP: 180, ENEMY_KEEP: 18000, SHAKE_HIT: 9, SHAKE_FALL: 18,   // 保持窓=最大落下(10器=10s/パラ無≈167m)を内包(180m)＝落下後の登り直しに敵が残る
   // ボス＋一時足場(T11)。ボスは高度BOSS_EVERY毎に出現＝任意撃破(スルー可・保持される)
   BOSS_EVERY: 150, BOSS_HP: 28, BOSS_W: 108, BOSS_H: 108, DMG_BOSS: 2,
   BOSS_DRIFT_X: 60, BOSS_BOB_Y: 22, BOSS_PHASE_SPD: 1.0,
@@ -178,6 +178,7 @@ let meta = Object.assign({
   unlocked: ['mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'kenpa', S: 'spin', D: 'homura' },
   ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
+meta.heartsBonus = Math.min(Math.max(0, meta.heartsBonus | 0), CONFIG.HEARTS_CAP - CONFIG.HEARTS_MAX);   // 器進行を上限(=10器)内にclamp＝旧/不正セーブも自動補正
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
 const maxMP = () => CONFIG.MP_MAX + meta.mpBonus * CONFIG.MP_PER_VESSEL;
 // 横穴(ベンチ＋店)の状態
@@ -208,7 +209,7 @@ function damage(q, knockY) {
   shake = Math.max(shake, CONFIG.SHAKE_HIT);
   if (player.hpQ <= 0) {
     player.hpQ = 0; player.state = 'fallStun'; player.clingWall = 0;
-    player.fallStun = (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.FALL_SEC_PER_HEART;   // 器(ハート)数×1s・上限なし
+    player.fallStun = Math.min(CONFIG.HEARTS_MAX + meta.heartsBonus, CONFIG.HEARTS_CAP) * CONFIG.FALL_SEC_PER_HEART;   // 器数×1s、上限=HEARTS_CAP(10器=10s)。スキル由来の器増は落下に乗らない
     player.vx = 0; shake = CONFIG.SHAKE_FALL; hp0flash = 0.5; saveMeta();
   }
 }
@@ -481,7 +482,7 @@ function drawSkillRadial() {
 // ---- 横穴（ベンチ＋店）----
 function buildHideoutRows() {
   const rows = [{ header: '── 器（カケラ4個で器1個・購入でベンチ全回復）──' }];
-  rows.push({ label: `HPカケラ 購入  [${meta.heartShards}/4]  最大ハート ${CONFIG.HEARTS_MAX + meta.heartsBonus}`, cost: `◆${CONFIG.HEART_SHARD_GOLD}`, can: meta.gold >= CONFIG.HEART_SHARD_GOLD,
+  rows.push({ label: `HPカケラ 購入  [${meta.heartShards}/4]  最大ハート ${CONFIG.HEARTS_MAX + meta.heartsBonus}/${CONFIG.HEARTS_CAP}${CONFIG.HEARTS_MAX + meta.heartsBonus >= CONFIG.HEARTS_CAP ? ' MAX' : ''}`, cost: `◆${CONFIG.HEART_SHARD_GOLD}`, can: meta.gold >= CONFIG.HEART_SHARD_GOLD && (CONFIG.HEARTS_MAX + meta.heartsBonus) < CONFIG.HEARTS_CAP,
     act: () => { meta.gold -= CONFIG.HEART_SHARD_GOLD; if (++meta.heartShards >= 4) { meta.heartShards = 0; meta.heartsBonus++; } player.hpQ = maxQ(); } });
   rows.push({ label: `MPカケラ 購入  [${meta.mpShards}/4]  最大MP ${maxMP()}`, cost: `SP${CONFIG.MP_SHARD_SP}`, can: meta.sp >= CONFIG.MP_SHARD_SP,
     act: () => { meta.sp -= CONFIG.MP_SHARD_SP; if (++meta.mpShards >= 4) { meta.mpShards = 0; meta.mpBonus++; } player.mp = maxMP(); } });
