@@ -263,6 +263,7 @@ function update(dt) {
   attackEdge = false; skillEdge.W = skillEdge.A = skillEdge.S = skillEdge.D = false;
 
   p.x += p.vx * dt; p.y += p.vy * dt;
+  if (p.state === 'cling') p.x = p.clingWall < 0 ? wallL(p.y) + p.w / 2 : wallR(p.y) - p.w / 2;   // 波形壁に密着＝ズリ落ち中も浮かない
 
   let side = 0; const wl = wallL(p.y), wr = wallR(p.y);
   if (p.x - p.w / 2 <= wl) { p.x = wl + p.w / 2; side = -1; }
