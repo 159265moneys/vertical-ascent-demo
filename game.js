@@ -116,6 +116,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyB') damage(1, 0);   // デバッグ：1/4
   if (e.code === 'KeyN') damage(99, 0);  // デバッグ：即HP0
   if (e.code === 'KeyG') player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK);  // デバッグ：鍵+1
+  if (e.code === 'KeyH') { inHideout = true; hideoutCursor = 1; }                    // デバッグ：横穴を直接開く(鍵/しがみつき不要)
   if (e.code === 'KeyE' && player.state === 'cling' && player.keys > 0) { player.keys--; inHideout = true; hideoutCursor = 1; saveMeta(); }  // 横穴へ
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
