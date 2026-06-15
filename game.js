@@ -61,6 +61,12 @@ const CONFIG = {
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
   BAND_GAP: 180, ENEMY_KEEP: 12000, SHAKE_HIT: 9, SHAKE_FALL: 18,
+  // ボス＋一時足場(T11)。ボスは高度BOSS_EVERY毎に出現＝任意撃破(スルー可・保持される)
+  BOSS_EVERY: 150, BOSS_HP: 28, BOSS_W: 108, BOSS_H: 108, DMG_BOSS: 2,
+  BOSS_DRIFT_X: 60, BOSS_BOB_Y: 22, BOSS_PHASE_SPD: 1.0,
+  BOSS_ATK_CD: 2.0, BOSS_WINDUP: 0.85, BOSS_VOLLEY: 5, BOSS_VOLLEY_SPREAD: 0.42,
+  BOSS_GOLD: 16, BOSS_SP: 6, BOSS_KEYS_MIN: 1, BOSS_KEYS_MAX: 3,
+  PLAT_W: 92, PLAT_H: 16, PLAT_LIFE: 4.5, PLAT_COUNT: 2,
 
   PLAYER_DRAW_H: 108, CAM_FOLLOW: 0.60, CAM_LERP: 9,
 };
@@ -142,6 +148,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyP') paused = !paused;
   if (e.code === 'KeyI') invincible = !invincible;   // デバッグ：永続無敵トグル
   if (e.code === 'KeyO') autoRise = !autoRise;       // デバッグ：無限上昇トグル
+  if (e.code === 'KeyM') spawnBoss();                 // デバッグ：ボス即出現
   if (e.code === 'KeyR') reset();
   if (e.code === 'KeyB') damage(1, 0);   // デバッグ：1/4
   if (e.code === 'KeyN') damage(99, 0);  // デバッグ：即HP0
@@ -159,7 +166,7 @@ const SPRITE_STATES = ['idle','cling','wallkick','fall','pogo','upattack'];
 const sprites = {};
 SPRITE_STATES.forEach(s => { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/${s}.png`; sprites[s] = img; });
 
-let player, cameraY, maxHeight, enemies, projectiles, spawnTopY, bandIndex, shake, hp0flash;
+let player, cameraY, maxHeight, enemies, projectiles, platforms, spawnTopY, bandIndex, bossNextH, shake, hp0flash;
 
 // 恒久層（localStorage）：金・SP・ベスト高度は reset() で消えない＝2層セーブの恒久側
 const META_KEY = 'vertical_ascent_meta';
@@ -187,8 +194,8 @@ function reset() {
     hpQ: maxQ(), mp: maxMP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
-  enemies = []; projectiles = [];
-  spawnTopY = -260; bandIndex = 0; shake = 0; hp0flash = 0; paused = false;
+  enemies = []; projectiles = []; platforms = [];
+  spawnTopY = -260; bandIndex = 0; bossNextH = CONFIG.BOSS_EVERY; shake = 0; hp0flash = 0; paused = false;
 }
 
 function damage(q, knockY) {
@@ -206,7 +213,9 @@ function damage(q, knockY) {
   }
 }
 
-function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false; meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } }
+function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false;
+  if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
+  else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
 
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
 function castKenpa() { const p = player; if (p.kenpaCd > 0 || p.mp < CONFIG.KENPA_MP) return; p.mp -= CONFIG.KENPA_MP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
@@ -225,6 +234,7 @@ function makeEnemy(type, x, y) {
   if (type === 'target')   return { ...base, w: 48, h: 22, hp: CONFIG.HP_TARGET };
   if (type === 'obstacle') return { ...base, w: 42, h: 42, hp: CONFIG.HP_OBSTACLE };
   if (type === 'floater')  return { ...base, w: 40, h: 40, hp: CONFIG.HP_FLOATER };
+  if (type === 'boss')     return { ...base, w: CONFIG.BOSS_W, h: CONFIG.BOSS_H, hp: CONFIG.BOSS_HP, hpMax: CONFIG.BOSS_HP, windup: 0, atkCd: CONFIG.BOSS_ATK_CD, mode: 0 };
   return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER, windup: 0 };
 }
 function spawnBand(y, idx) {
@@ -303,6 +313,7 @@ function update(dt) {
   }
   if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; p.airJumps = 0; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
   else p.grounded = false;
+  for (const pl of platforms) { const top = pl.y - pl.h / 2; if (p.state !== 'cling' && p.vy >= 0 && p.x + p.w / 2 > pl.x - pl.w / 2 && p.x - p.w / 2 < pl.x + pl.w / 2 && p.y + p.h / 2 >= top && p.y + p.h / 2 <= top + 22 + p.vy * dt) { p.y = top - p.h / 2; p.vy = 0; p.grounded = true; p.airJumps = 0; } }   // ボスの一時足場に片面着地＝footing
   if (p.grounded && p.state === 'air') p.x += inX * 180 * dt;
 
   while (spawnTopY > cameraY - H) { spawnBand(spawnTopY, bandIndex++); spawnTopY -= CONFIG.BAND_GAP; }
@@ -315,12 +326,18 @@ function update(dt) {
     if (e.type === 'target') e.y += CONFIG.FALLER_VY * dt;
     else if (e.type === 'obstacle') e.y += CONFIG.OBSTACLE_VY * dt;
     else if (e.type === 'floater') { e.phase += dt * CONFIG.FLOAT_SPEED; e.x = e.baseX + Math.sin(e.phase) * CONFIG.FLOAT_DRIFT_X; e.y = e.baseY + Math.cos(e.phase * 0.8) * CONFIG.FLOAT_DRIFT_Y; }
+    else if (e.type === 'boss') {
+      e.phase += dt * CONFIG.BOSS_PHASE_SPD;
+      e.x = e.baseX + Math.sin(e.phase) * CONFIG.BOSS_DRIFT_X; e.y = e.baseY + Math.sin(e.phase * 0.7) * CONFIG.BOSS_BOB_Y;
+      const bwl = wallL(e.y), bwr = wallR(e.y); e.x = Math.max(bwl + e.w / 2, Math.min(bwr - e.w / 2, e.x));
+      if (e.y > cameraY - 80 && e.y < cameraY + H + 80) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { e.mode === 0 ? bossVolley(e) : bossPillars(e); e.mode ^= 1; e.atkCd = CONFIG.BOSS_ATK_CD; } } else { e.atkCd -= dt; if (e.atkCd <= 0) e.windup = CONFIG.BOSS_WINDUP; } }
+    }
     else { e.phase += dt * CONFIG.FLOAT_SPEED * 0.6; e.x = e.baseX + Math.sin(e.phase) * CONFIG.ATTACKER_DRIFT_X; const onScr = e.y > cameraY - 40 && e.y < cameraY + H + 40; if (onScr) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { fireAt(e); e.fireCd = CONFIG.ATTACKER_FIRE_CD; } } else { e.fireCd -= dt; if (e.fireCd <= 0) e.windup = CONFIG.TELEGRAPH_LEAD; } } }
 
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
-    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); } }
+    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); } }
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
   if (p.nailTimer > 0) p.nailHitThisSwing = true;
@@ -346,12 +363,17 @@ function update(dt) {
 
   enemies = enemies.filter(e => e.alive && e.y < cameraY + H + CONFIG.ENEMY_KEEP);   // 死んだ敵=倒したら恒久消滅／生存(スルー)敵は遥か下まで保持→降りれば再会
   projectiles = projectiles.filter(pr => pr.alive);
+  for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
 
   const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
+  if (maxHeight / 100 >= bossNextH) { bossNextH += CONFIG.BOSS_EVERY; if (!enemies.some(e => e.type === 'boss' && e.alive)) spawnBoss(); }   // 高度BOSS_EVERY毎にボス(在ボス中は次の閾値まで持ち越し)
   cameraY += ((p.y - H * CONFIG.CAM_FOLLOW) - cameraY) * Math.min(1, CONFIG.CAM_LERP * dt);
 }
 
 function fireAt(e) { const dx = player.x - e.x, dy = player.y - e.y, d = Math.hypot(dx, dy) || 1; projectiles.push({ x: e.x, y: e.y, vx: dx / d * CONFIG.PROJECTILE_V, vy: dy / d * CONFIG.PROJECTILE_V, r: 7, alive: true, friendly: false }); }
+function spawnBoss() { const by = player.y - 300, bx = (wallL(by) + wallR(by)) / 2; enemies.push(makeEnemy('boss', bx, by)); shake = Math.max(shake, 8); }   // 画面上部(HUD下)に出現＝プレイヤーが登って遭遇
+function bossVolley(e) { const base = Math.atan2(player.y - e.y, player.x - e.x), n = CONFIG.BOSS_VOLLEY; for (let i = 0; i < n; i++) { const a = base + (i - (n - 1) / 2) * CONFIG.BOSS_VOLLEY_SPREAD; projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * CONFIG.PROJECTILE_V, vy: Math.sin(a) * CONFIG.PROJECTILE_V, r: 8, alive: true, friendly: false }); } }
+function bossPillars(e) { const wl = wallL(e.y), span = wallR(e.y) - wl; for (let i = 0; i < CONFIG.PLAT_COUNT; i++) platforms.push({ x: wl + span * (i + 1) / (CONFIG.PLAT_COUNT + 1), y: e.y + CONFIG.BOSS_H * 0.7 + i * 42, w: CONFIG.PLAT_W, h: CONFIG.PLAT_H, life: CONFIG.PLAT_LIFE }); }
 
 // ---- render ----
 function sy(worldY) { return worldY - cameraY; }
@@ -373,6 +395,14 @@ function drawEnemy(e) {
   if (e.type === 'target') { ctx.fillStyle = flash ? '#fff' : '#27ae60'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 5); ctx.fill(); ctx.fillStyle = '#9be8bd'; ctx.beginPath(); ctx.moveTo(x - 6, y - 2); ctx.lineTo(x + 6, y - 2); ctx.lineTo(x, y + 5); ctx.fill(); return; }
   if (e.type === 'obstacle') { ctx.fillStyle = flash ? '#fff' : '#c0392b'; const s = e.w / 2; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill(); return; }
   if (e.type === 'floater') { ctx.fillStyle = flash ? '#fff' : '#16a2b8'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); ctx.strokeStyle = '#0d6f7e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, e.w / 2 - 5, 0, 6.2832); ctx.stroke(); return; }
+  if (e.type === 'boss') {
+    const t = e.windup > 0 ? 1 - e.windup / CONFIG.BOSS_WINDUP : 0;
+    ctx.fillStyle = flash ? '#fff' : '#6c2bd9'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 16); ctx.fill();
+    ctx.strokeStyle = '#b794f6'; ctx.lineWidth = 3; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 16); ctx.stroke();
+    ctx.fillStyle = e.windup > 0 ? '#ff5050' : (e.mode === 0 ? '#f6d365' : '#7ee8c0'); ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
+    if (e.windup > 0) { ctx.strokeStyle = `rgba(255,80,80,${0.4 + 0.5 * t})`; ctx.lineWidth = 3 + 5 * t; ctx.beginPath(); ctx.arc(x, y, 24 + 40 * t, 0, 6.2832); ctx.stroke(); }
+    return;
+  }
   ctx.fillStyle = flash ? '#fff' : '#8e44ad'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 8); ctx.fill();
   if (e.windup > 0) { const t = 1 - e.windup / CONFIG.TELEGRAPH_LEAD; ctx.strokeStyle = `rgba(255,80,80,${0.4 + 0.5 * t})`; ctx.lineWidth = 2 + 3 * t; ctx.beginPath(); ctx.arc(x, y, 10 + 14 * t, 0, 6.2832); ctx.stroke(); }
   ctx.fillStyle = e.windup > 0 ? '#ff5050' : '#f1c40f'; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fill();
@@ -394,7 +424,8 @@ function render() {
   ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
   drawWalls(bio);
   if (sy(0) < H) { ctx.fillStyle = bio.line; ctx.fillRect(wallL(0), sy(0), wallR(0) - wallL(0), H); }
-  for (const e of enemies) { const y = sy(e.y); if (y < -60 || y > H + 60) continue; drawEnemy(e); }
+  for (const e of enemies) { const y = sy(e.y); if (y < -140 || y > H + 140) continue; drawEnemy(e); }
+  for (const pl of platforms) { const py = sy(pl.y); if (py < -40 || py > H + 40) continue; const a = Math.min(1, pl.life / 1.2); ctx.fillStyle = `rgba(126,232,192,${0.3 + 0.45 * a})`; roundRect(pl.x - pl.w / 2, py - pl.h / 2, pl.w, pl.h, 5); ctx.fill(); ctx.strokeStyle = `rgba(180,255,230,${0.6 * a})`; ctx.lineWidth = 2; ctx.stroke(); }   // ボスの一時足場(寿命で点滅消失)
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
   drawPlayer();
   const p = player;
@@ -405,6 +436,7 @@ function render() {
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
   drawHUD();
+  { const boss = enemies.find(e => e.type === 'boss' && e.alive && e.y > cameraY - 80 && e.y < cameraY + H + 80); if (boss) { const bw = W - 80, bx = 40, byy = 92; ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(bx - 2, byy - 2, bw + 4, 12); ctx.fillStyle = '#6c2bd9'; ctx.fillRect(bx, byy, bw * Math.max(0, boss.hp / boss.hpMax), 8); ctx.strokeStyle = '#b794f6'; ctx.lineWidth = 1; ctx.strokeRect(bx, byy, bw, 8); ctx.fillStyle = '#cbb6f0'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('BOSS', W / 2, byy - 3); ctx.textAlign = 'left'; } }
   if (inHideout) drawHideout();
   else if (skillMod()) drawSkillRadial();
   if (paused) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('PAUSE (P)', W / 2, H / 2); ctx.textAlign = 'left'; }
