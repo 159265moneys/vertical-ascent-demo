@@ -29,7 +29,7 @@ const CONFIG = {
 
   // --- HP（ハート・1/4刻み）---
   HEARTS_MAX: 3, QPH: 4,
-  FALL_SEC_PER_HEART: 1.0, FALL_TIME_CAP: 14, IFRAME: 0.9,
+  FALL_SEC_PER_HEART: 1.0, FALL_TIME_CAP: 7, IFRAME: 0.9,   // T12=時間型：死亡でハート数×1s落下(空中復帰+HP全回復)。上限7s≈100m<敵保持窓120m=空区間に落ちない
 
   // --- MP（共有CT・自動回復）---
   MP_MAX: 100, MP_REGEN: 30,
