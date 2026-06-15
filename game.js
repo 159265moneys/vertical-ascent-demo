@@ -48,6 +48,9 @@ const CONFIG = {
   GOLD: { target: 1, obstacle: 2, floater: 2, attacker: 4 },
   SP: { target: 1, obstacle: 1, floater: 1, attacker: 2 },
   TELEGRAPH_LEAD: 0.5,
+  // --- 横穴ハブ（鍵・器）---
+  KEY_PER_KILLS: 6, KEY_STOCK: 2,
+  HEART_SHARD_GOLD: 12, MP_SHARD_SP: 8, MP_PER_VESSEL: 30,   // カケラ4個で器1個
 
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
@@ -82,6 +85,7 @@ addEventListener('keydown', e => {
   if (PREVENT.includes(e.code)) e.preventDefault();
   const fresh = !keys[e.code]; keys[e.code] = true;
   if (!fresh || e.repeat) return;
+  if (inHideout) { hideoutKey(e.code); return; }   // 横穴中はメニュー操作
   if (skillMod() && e.code === 'KeyW') { skillEdge.W = true; return; }
   if (skillMod() && e.code === 'KeyA') { skillEdge.A = true; return; }
   if (skillMod() && e.code === 'KeyS') { skillEdge.S = true; return; }
@@ -92,6 +96,8 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyR') reset();
   if (e.code === 'KeyB') damage(1, 0);   // デバッグ：1/4
   if (e.code === 'KeyN') damage(99, 0);  // デバッグ：即HP0
+  if (e.code === 'KeyG') player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK);  // デバッグ：鍵+1
+  if (e.code === 'KeyE' && player.state === 'cling' && player.keys > 0) { player.keys--; inHideout = true; hideoutCursor = 1; saveMeta(); }  // 横穴へ
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 const held = {   // 左Shift中はWASDをスキルに使うので移動/攻撃方向には効かせない
@@ -109,7 +115,14 @@ let player, cameraY, maxHeight, enemies, projectiles, spawnTopY, bandIndex, shak
 const META_KEY = 'vertical_ascent_meta';
 function loadMeta() { try { return JSON.parse(localStorage.getItem(META_KEY)) || {}; } catch (e) { return {}; } }
 function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) {} }
-let meta = Object.assign({ gold: 0, sp: 0, bestHeight: 0 }, loadMeta());
+let meta = Object.assign({
+  gold: 0, sp: 0, bestHeight: 0,
+  heartShards: 0, mpShards: 0, heartsBonus: 0, mpBonus: 0,
+}, loadMeta());
+const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
+const maxMP = () => CONFIG.MP_MAX + meta.mpBonus * CONFIG.MP_PER_VESSEL;
+// 横穴(ベンチ＋店)の状態
+let inHideout = false, hideoutCursor = 1;
 
 function reset() {
   player = {
@@ -119,7 +132,7 @@ function reset() {
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
     spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0,
-    hpQ: CONFIG.HEARTS_MAX * CONFIG.QPH, mp: CONFIG.MP_MAX, fallStun: 0, iframe: 0,
+    hpQ: maxQ(), mp: maxMP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
   enemies = []; projectiles = [];
@@ -135,12 +148,12 @@ function damage(q, knockY) {
   shake = Math.max(shake, CONFIG.SHAKE_HIT);
   if (player.hpQ <= 0) {
     player.hpQ = 0; player.state = 'fallStun'; player.clingWall = 0;
-    player.fallStun = Math.min(CONFIG.HEARTS_MAX * CONFIG.FALL_SEC_PER_HEART, CONFIG.FALL_TIME_CAP);
+    player.fallStun = Math.min((CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.FALL_SEC_PER_HEART, CONFIG.FALL_TIME_CAP);
     player.vx = 0; shake = CONFIG.SHAKE_FALL; hp0flash = 0.5; saveMeta();
   }
 }
 
-function hitEnemy(e, dmg) { e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false; meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); } }
+function hitEnemy(e, dmg) { e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false; meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } }
 
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
 function castKenpa() { const p = player; if (p.kenpaCd > 0 || p.mp < CONFIG.KENPA_MP) return; p.mp -= CONFIG.KENPA_MP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
@@ -172,20 +185,21 @@ const upBox = () => ({ x: player.x, y: player.y - player.h / 2 - CONFIG.UPATK_RE
 const nailBox = () => ({ x: player.x + player.facing * (player.w / 2 + CONFIG.NAIL_REACH + CONFIG.NAIL_W / 2), y: player.y, w: CONFIG.NAIL_W, h: CONFIG.NAIL_H });
 
 function update(dt) {
+  if (inHideout) return;   // 横穴中はクライム停止
   const p = player;
   if (jumpBuffer > 0) jumpBuffer -= dt;
   if (p.iframe > 0) p.iframe -= dt;
   for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
   if (shake > 0) shake = Math.max(0, shake - 60 * dt);
   if (hp0flash > 0) hp0flash -= dt;
-  if (p.mp < CONFIG.MP_MAX) p.mp = Math.min(CONFIG.MP_MAX, p.mp + CONFIG.MP_REGEN * dt);
+  if (p.mp < maxMP()) p.mp = Math.min(maxMP(), p.mp + CONFIG.MP_REGEN * dt);
 
   const inX = (held.right() ? 1 : 0) - (held.left() ? 1 : 0);
 
   if (p.state === 'fallStun') {
     p.fallStun -= dt;
     p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL * 1.15);
-    if (p.fallStun <= 0) { p.state = 'air'; p.hpQ = CONFIG.HEARTS_MAX * CONFIG.QPH; }
+    if (p.fallStun <= 0) { p.state = 'air'; p.hpQ = maxQ(); }
   } else if (p.state === 'cling') {
     p.vx = 0; p.lastWall = p.clingWall; p.clingHold += dt;
     const over = p.clingHold - CONFIG.CLING_GRIP_TIME;
@@ -224,7 +238,7 @@ function update(dt) {
     if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
     else p.vx = 0;
   }
-  if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = CONFIG.HEARTS_MAX * CONFIG.QPH; } }
+  if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
   else p.grounded = false;
   if (p.grounded && p.state === 'air') p.x += inX * 180 * dt;
 
@@ -322,7 +336,8 @@ function render() {
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
   drawHUD();
-  if (skillMod()) drawSkillRadial();
+  if (inHideout) drawHideout();
+  else if (skillMod()) drawSkillRadial();
   if (paused) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('PAUSE (P)', W / 2, H / 2); ctx.textAlign = 'left'; }
 }
 function drawHUD() {
@@ -332,12 +347,13 @@ function drawHUD() {
   ctx.textAlign = 'right'; ctx.font = 'bold 13px system-ui';
   ctx.fillStyle = '#f1c40f'; ctx.fillText(`◆${meta.gold}`, W - 12, 22);
   ctx.fillStyle = '#a99bff'; ctx.fillText(`SP ${meta.sp}`, W - 12, 40);
+  ctx.fillStyle = '#e6e1c8'; ctx.fillText(`🔑${player.keys}`, W - 12, 58);
   ctx.textAlign = 'left';
-  const total = CONFIG.HEARTS_MAX * CONFIG.QPH; let px = 14;
+  const total = maxQ(); let px = 14;
   for (let i = 0; i < total; i++) { ctx.fillStyle = i < player.hpQ ? '#e74c3c' : '#3a4150'; roundRect(px, 44, 7, 14, 2); ctx.fill(); px += 9; if ((i + 1) % CONFIG.QPH === 0) px += 6; }
   ctx.fillStyle = '#22303f'; ctx.fillRect(14, 64, 96, 7);
-  ctx.fillStyle = '#48b1d6'; ctx.fillRect(14, 64, 96 * (player.mp / CONFIG.MP_MAX), 7);
-  if (player.state === 'cling') { const gg = Math.max(0, 1 - player.clingHold / CONFIG.CLING_GRIP_TIME); ctx.font = '11px system-ui'; ctx.fillStyle = gg > 0 ? '#5dade2' : '#e67e22'; ctx.fillText(gg > 0 ? 'つかまり中' : 'ずり落ち！', 118, 72); }
+  ctx.fillStyle = '#48b1d6'; ctx.fillRect(14, 64, 96 * (player.mp / maxMP()), 7);
+  if (player.state === 'cling') { const gg = Math.max(0, 1 - player.clingHold / CONFIG.CLING_GRIP_TIME); ctx.font = '11px system-ui'; ctx.fillStyle = gg > 0 ? '#5dade2' : '#e67e22'; ctx.fillText((gg > 0 ? 'つかまり中' : 'ずり落ち！') + (player.keys > 0 ? '  E:横穴' : ''), 118, 72); }
 }
 // 左Shiftホールド中：画面中央に上下左右(W↑/S↓/A←/D→)でセット済みスキルを簡易ポップ表示
 function drawSkillRadial() {
@@ -357,6 +373,42 @@ function drawSkillRadial() {
     ctx.font = '10px system-ui'; ctx.fillStyle = usable ? '#9fc4dd' : '#566273'; ctx.fillText(`MP ${cost}`, x, y + 12);
   }
   ctx.textAlign = 'left';
+}
+
+// ---- 横穴（ベンチ＋店）----
+function buildHideoutRows() {
+  const rows = [{ header: '── 器（カケラ4個で器1個・購入でベンチ全回復）──' }];
+  rows.push({ label: `HPカケラ 購入  [${meta.heartShards}/4]  最大ハート ${CONFIG.HEARTS_MAX + meta.heartsBonus}`, cost: `◆${CONFIG.HEART_SHARD_GOLD}`, can: meta.gold >= CONFIG.HEART_SHARD_GOLD,
+    act: () => { meta.gold -= CONFIG.HEART_SHARD_GOLD; if (++meta.heartShards >= 4) { meta.heartShards = 0; meta.heartsBonus++; } player.hpQ = maxQ(); } });
+  rows.push({ label: `MPカケラ 購入  [${meta.mpShards}/4]  最大MP ${maxMP()}`, cost: `SP${CONFIG.MP_SHARD_SP}`, can: meta.sp >= CONFIG.MP_SHARD_SP,
+    act: () => { meta.sp -= CONFIG.MP_SHARD_SP; if (++meta.mpShards >= 4) { meta.mpShards = 0; meta.mpBonus++; } player.mp = maxMP(); } });
+  rows.push({ header: '────────（スキル解放/チャームは実装予定）────────' });
+  rows.push({ label: 'クライムに戻る', cost: '', can: true, act: () => { inHideout = false; } });
+  return rows;
+}
+function hideoutKey(code) {
+  const rows = buildHideoutRows();
+  if (code === 'KeyW' || code === 'ArrowUp') { do { hideoutCursor = (hideoutCursor - 1 + rows.length) % rows.length; } while (rows[hideoutCursor].header); }
+  else if (code === 'KeyS' || code === 'ArrowDown') { do { hideoutCursor = (hideoutCursor + 1) % rows.length; } while (rows[hideoutCursor].header); }
+  else if (code === 'Enter' || code === 'NumpadEnter') { const r = rows[hideoutCursor]; if (r && r.act && r.can) { r.act(); saveMeta(); } }
+  else if (code === 'KeyE' || code === 'Escape') { inHideout = false; saveMeta(); }
+}
+function drawHideout() {
+  ctx.fillStyle = 'rgba(8,11,16,.93)'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#eaf4ff'; ctx.font = 'bold 24px system-ui'; ctx.fillText('横穴（ベンチ＋店）', W / 2, 64);
+  ctx.fillStyle = '#9fc4dd'; ctx.font = '12px system-ui'; ctx.fillText('セーブ済 ・ W/S 選択 ・ Enter 決定 ・ E/Esc 戻る', W / 2, 88);
+  ctx.fillStyle = '#f1c40f'; ctx.font = 'bold 15px system-ui'; ctx.fillText(`◆ ${meta.gold}     SP ${meta.sp}     🔑 ${player.keys}`, W / 2, 116);
+  const rows = buildHideoutRows(); ctx.textAlign = 'left'; let y = 162;
+  rows.forEach((r, i) => {
+    if (r.header) { ctx.fillStyle = '#5a6675'; ctx.font = '12px system-ui'; ctx.fillText(r.header, 44, y); y += 24; return; }
+    const sel = i === hideoutCursor;
+    if (sel) { ctx.fillStyle = 'rgba(93,173,226,.18)'; roundRect(36, y - 16, W - 72, 26, 5); ctx.fill(); }
+    ctx.fillStyle = !r.can ? '#566273' : (sel ? '#eaf4ff' : '#cfe0f0'); ctx.font = (sel ? 'bold ' : '') + '14px system-ui';
+    ctx.fillText((sel ? '▶ ' : '   ') + r.label, 44, y);
+    if (r.cost) { ctx.textAlign = 'right'; ctx.fillStyle = r.can ? '#f1c40f' : '#566273'; ctx.fillText(r.cost, W - 44, y); ctx.textAlign = 'left'; }
+    y += 30;
+  });
 }
 
 const STEP = 1 / 120;
