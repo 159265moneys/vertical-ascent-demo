@@ -72,17 +72,17 @@ const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 const keys = {};
 let jumpBuffer = 0, attackEdge = false, paused = false;
 const skillEdge = { W: false, A: false, S: false, D: false };
-const ctrl = () => keys['ControlLeft'] || keys['ControlRight'];
-const PREVENT = ['ShiftLeft','ShiftRight','Enter','NumpadEnter','KeyW','KeyA','KeyS','KeyD','ControlLeft','ControlRight','Space'];
+const skillMod = () => keys['ShiftLeft'];   // 左Shift＝スキル修飾 ／ 右Shift＝ジャンプ（ブラウザ安全）
+const PREVENT = ['ShiftLeft','ShiftRight','Enter','NumpadEnter','KeyW','KeyA','KeyS','KeyD','Space'];
 addEventListener('keydown', e => {
   if (PREVENT.includes(e.code)) e.preventDefault();
   const fresh = !keys[e.code]; keys[e.code] = true;
   if (!fresh || e.repeat) return;
-  if (ctrl() && e.code === 'KeyW') { skillEdge.W = true; return; }
-  if (ctrl() && e.code === 'KeyA') { skillEdge.A = true; return; }
-  if (ctrl() && e.code === 'KeyS') { skillEdge.S = true; return; }
-  if (ctrl() && e.code === 'KeyD') { skillEdge.D = true; return; }
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') jumpBuffer = CONFIG.JUMP_BUFFER;
+  if (skillMod() && e.code === 'KeyW') { skillEdge.W = true; return; }
+  if (skillMod() && e.code === 'KeyA') { skillEdge.A = true; return; }
+  if (skillMod() && e.code === 'KeyS') { skillEdge.S = true; return; }
+  if (skillMod() && e.code === 'KeyD') { skillEdge.D = true; return; }
+  if (e.code === 'ShiftRight') jumpBuffer = CONFIG.JUMP_BUFFER;   // ジャンプ／壁キック＝右Shift
   if (e.code === 'Enter' || e.code === 'NumpadEnter') attackEdge = true;
   if (e.code === 'KeyP') paused = !paused;
   if (e.code === 'KeyR') reset();
@@ -90,9 +90,9 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyN') damage(99, 0);  // デバッグ：即HP0
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-const held = {   // Ctrl中はWASDをスキルに使うので移動/攻撃方向には効かせない
-  left: () => keys['KeyA'] && !ctrl(), right: () => keys['KeyD'] && !ctrl(),
-  up: () => keys['KeyW'] && !ctrl(), down: () => keys['KeyS'] && !ctrl(),
+const held = {   // 左Shift中はWASDをスキルに使うので移動/攻撃方向には効かせない
+  left: () => keys['KeyA'] && !skillMod(), right: () => keys['KeyD'] && !skillMod(),
+  up: () => keys['KeyW'] && !skillMod(), down: () => keys['KeyS'] && !skillMod(),
 };
 
 const SPRITE_STATES = ['idle','cling','wallkick','fall','pogo','upattack'];
@@ -180,7 +180,7 @@ function update(dt) {
     p.vx = 0; p.lastWall = p.clingWall; p.clingHold += dt;
     const over = p.clingHold - CONFIG.CLING_GRIP_TIME;
     p.vy = over > 0 ? Math.min(CONFIG.CLING_SLIDE_MAX, over * CONFIG.CLING_SLIDE_ACCEL) : 0;
-    const grip = (p.clingWall < 0 && held.left()) || (p.clingWall > 0 && held.right());
+    const grip = (p.clingWall < 0 && keys['KeyA']) || (p.clingWall > 0 && keys['KeyD']);   // 生キー＝左Shift(スキル)中でも壁を掴み続ける
     if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir; p.vy = CONFIG.WALLKICK_VY; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; }
     else if (!grip) { p.state = 'air'; p.coyote = CONFIG.COYOTE; p.clingWall = 0; }
   } else {
@@ -210,7 +210,7 @@ function update(dt) {
   if (p.x - p.w / 2 <= CONFIG.WALL_L) { p.x = CONFIG.WALL_L + p.w / 2; side = -1; }
   else if (p.x + p.w / 2 >= CONFIG.WALL_R) { p.x = CONFIG.WALL_R - p.w / 2; side = 1; }
   if (side !== 0 && p.state === 'air') {
-    const toward = (side < 0 && held.left()) || (side > 0 && held.right());
+    const toward = (side < 0 && keys['KeyA']) || (side > 0 && keys['KeyD']);
     if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
     else p.vx = 0;
   }
@@ -324,8 +324,8 @@ function drawHUD() {
 }
 function drawSkillBar() {
   // Ctrl+WASD の4枠を常時表示（覚えなくていい）
-  ctx.font = '10px system-ui'; ctx.fillStyle = '#7f8ca0'; ctx.textAlign = 'left'; ctx.fillText('Ctrl +', 14, 90);
-  const x0 = 54, cw = 90, gap = 4;
+  ctx.font = '10px system-ui'; ctx.fillStyle = '#7f8ca0'; ctx.textAlign = 'left'; ctx.fillText('左Shift+', 8, 90);
+  const x0 = 64, cw = 88, gap = 4;
   SLOT_HUD.forEach((s, i) => {
     const x = x0 + i * (cw + gap), y = 82, cost = CONFIG[s.mp], cd = player[s.cd] || 0;
     const usable = player.mp >= cost && cd <= 0;
