@@ -42,6 +42,9 @@ const CONFIG = {
   RAIJIN_MP: 28, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
   TRI_MP: 30, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
   UNLOCK_SP: 10,
+  // --- チャーム ---
+  NOTCH_EXPAND_GOLD: 40, WKICK_BONUS: 1.25, PARA_FALL: 0.5, DEF_REDUCE: 1,
+  KAISHIN_CHANCE: 0.2, KAISHIN_MULT: 2, KIBA_MULT: 0.5,
 
   // --- 敵HP（ATK_BASE基準＝何発で倒れるか）---
   HP_TARGET: 2, HP_OBSTACLE: 3, HP_FLOATER: 3, HP_ATTACKER: 4,
@@ -72,6 +75,17 @@ const SKILL_META = {
   tri: { name: '三連剣波', mp: 'TRI_MP', cd: 'triCd', cdMax: 'TRI_CD' },
 };
 const SKILL_IDS = Object.keys(SKILL_META);
+// チャーム（金で購入・ノッチ枠内で装着）。効果は各所が hasCharm() を参照
+const CHARMS = [
+  { id: 'djump', name: '二段ジャンプ', notch: 2, gold: 30 },
+  { id: 'wkick', name: '壁キック延長', notch: 1, gold: 20 },
+  { id: 'para', name: 'パラシュート', notch: 1, gold: 25 },
+  { id: 'def', name: '防御', notch: 1, gold: 22 },
+  { id: 'kaishin', name: '会心', notch: 1, gold: 28 },
+  { id: 'kiba', name: '牙突', notch: 2, gold: 32 },
+];
+const hasCharm = id => meta.equippedCharms.includes(id);
+const notchUsed = () => meta.equippedCharms.reduce((s, id) => s + ((CHARMS.find(c => c.id === id) || { notch: 0 }).notch), 0);
 
 const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
@@ -124,6 +138,7 @@ let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, mpShards: 0, heartsBonus: 0, mpBonus: 0,
   unlocked: ['mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'kenpa', S: 'spin', D: 'homura' },
+  ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
 const maxMP = () => CONFIG.MP_MAX + meta.mpBonus * CONFIG.MP_PER_VESSEL;
@@ -133,7 +148,7 @@ let inHideout = false, hideoutCursor = 1;
 function reset() {
   player = {
     x: (CONFIG.WALL_L + CONFIG.WALL_R) / 2, y: 0, vx: 0, vy: 0, w: CONFIG.PLAYER_W, h: CONFIG.PLAYER_H,
-    state: 'air', facing: 1, grounded: true, clingWall: 0, clingHold: 0, coyote: 0, lastWall: 0,
+    state: 'air', facing: 1, grounded: true, clingWall: 0, clingHold: 0, coyote: 0, lastWall: 0, airJumps: 0,
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
@@ -147,6 +162,7 @@ function reset() {
 
 function damage(q, knockY) {
   if (player.iframe > 0 || player.state === 'fallStun' || q <= 0) return;
+  if (hasCharm('def')) q = Math.max(0, q - CONFIG.DEF_REDUCE);              // 防御チャーム
   if (player.mayuTimer > 0) q = Math.floor(q * (1 - CONFIG.MAYU_REDUCE));   // 守護の繭：被ダメ減
   if (q <= 0) { player.iframe = CONFIG.IFRAME * 0.4; return; }
   player.hpQ -= q; player.iframe = CONFIG.IFRAME;
@@ -159,7 +175,7 @@ function damage(q, knockY) {
   }
 }
 
-function hitEnemy(e, dmg) { e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false; meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } }
+function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false; meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } }
 
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
 function castKenpa() { const p = player; if (p.kenpaCd > 0 || p.mp < CONFIG.KENPA_MP) return; p.mp -= CONFIG.KENPA_MP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
@@ -198,6 +214,7 @@ const nailBox = () => ({ x: player.x + player.facing * (player.w / 2 + CONFIG.NA
 function update(dt) {
   if (inHideout) return;   // 横穴中はクライム停止
   const p = player;
+  const wk = hasCharm('wkick') ? CONFIG.WKICK_BONUS : 1;   // 壁キック延長チャーム
   if (jumpBuffer > 0) jumpBuffer -= dt;
   if (p.iframe > 0) p.iframe -= dt;
   for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
@@ -209,14 +226,14 @@ function update(dt) {
 
   if (p.state === 'fallStun') {
     p.fallStun -= dt;
-    p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL * 1.15);
+    p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL * 1.15 * (hasCharm('para') ? CONFIG.PARA_FALL : 1));   // パラシュート
     if (p.fallStun <= 0) { p.state = 'air'; p.hpQ = maxQ(); }
   } else if (p.state === 'cling') {
-    p.vx = 0; p.lastWall = p.clingWall; p.clingHold += dt;
+    p.vx = 0; p.lastWall = p.clingWall; p.clingHold += dt; p.airJumps = 0;
     const over = p.clingHold - CONFIG.CLING_GRIP_TIME;
     p.vy = over > 0 ? Math.min(CONFIG.CLING_SLIDE_MAX, over * CONFIG.CLING_SLIDE_ACCEL) : 0;
     const grip = (p.clingWall < 0 && keys['KeyA']) || (p.clingWall > 0 && keys['KeyD']);   // 生キー＝左Shift(スキル)中でも壁を掴み続ける
-    if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir; p.vy = CONFIG.WALLKICK_VY; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; }
+    if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; }
     else if (!grip) { p.state = 'air'; p.coyote = CONFIG.COYOTE; p.clingWall = 0; }
   } else {
     if (p.coyote > 0) p.coyote -= dt;
@@ -226,7 +243,8 @@ function update(dt) {
     p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL);
     if (jumpBuffer > 0) {
       if (p.grounded) { p.vy = CONFIG.GROUND_JUMP_VY; p.grounded = false; jumpBuffer = 0; }
-      else if (p.coyote > 0 && p.lastWall !== 0) { const dir = -p.lastWall; p.vx = CONFIG.WALLKICK_VX * dir; p.vy = CONFIG.WALLKICK_VY; p.facing = dir; p.coyote = 0; jumpBuffer = 0; }
+      else if (p.coyote > 0 && p.lastWall !== 0) { const dir = -p.lastWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.coyote = 0; jumpBuffer = 0; }
+      else if (hasCharm('djump') && p.airJumps < 1) { p.vy = CONFIG.GROUND_JUMP_VY * 0.92; p.airJumps++; jumpBuffer = 0; }   // 二段ジャンプ
     }
   }
 
@@ -249,7 +267,7 @@ function update(dt) {
     if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
     else p.vx = 0;
   }
-  if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
+  if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; p.airJumps = 0; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
   else p.grounded = false;
   if (p.grounded && p.state === 'air') p.x += inX * 180 * dt;
 
@@ -267,7 +285,7 @@ function update(dt) {
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
-    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : CONFIG.DMG_TARGET; if (dq > 0 && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) damage(dq, -480); }
+    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); } }
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
   if (p.nailTimer > 0) p.nailHitThisSwing = true;
@@ -396,7 +414,12 @@ function buildHideoutRows() {
   rows.push({ header: '── スキル（SP解放 / 枠割当）──' });
   for (const id of SKILL_IDS) if (!meta.unlocked.includes(id)) rows.push({ label: `解放: ${SKILL_META[id].name}`, cost: `SP${CONFIG.UNLOCK_SP}`, can: meta.sp >= CONFIG.UNLOCK_SP, act: () => { meta.sp -= CONFIG.UNLOCK_SP; meta.unlocked.push(id); } });
   for (const dir of ['W', 'A', 'S', 'D']) rows.push({ label: `枠 ${dir}: ${SKILL_META[meta.slots[dir]].name}  ▸切替`, cost: '', can: meta.unlocked.length > 1, act: () => { const u = meta.unlocked, i = u.indexOf(meta.slots[dir]); meta.slots[dir] = u[(i + 1) % u.length]; } });
-  rows.push({ header: '────────（チャームは実装予定）────────' });
+  rows.push({ header: `── チャーム（金購入/装着・ノッチ ${notchUsed()}/${meta.notchMax}）──` });
+  rows.push({ label: 'ノッチ拡張 +1', cost: `◆${CONFIG.NOTCH_EXPAND_GOLD}`, can: meta.gold >= CONFIG.NOTCH_EXPAND_GOLD, act: () => { meta.gold -= CONFIG.NOTCH_EXPAND_GOLD; meta.notchMax++; } });
+  for (const c of CHARMS) {
+    if (!meta.ownedCharms.includes(c.id)) rows.push({ label: `購入: ${c.name} [${c.notch}枠]`, cost: `◆${c.gold}`, can: meta.gold >= c.gold, act: () => { meta.gold -= c.gold; meta.ownedCharms.push(c.id); } });
+    else { const eq = hasCharm(c.id); rows.push({ label: `${eq ? '◉' : '○'} ${c.name} [${c.notch}枠]`, cost: eq ? '解除' : '装着', can: eq || notchUsed() + c.notch <= meta.notchMax, act: () => { if (eq) meta.equippedCharms = meta.equippedCharms.filter(x => x !== c.id); else meta.equippedCharms.push(c.id); } }); }
+  }
   rows.push({ label: 'クライムに戻る', cost: '', can: true, act: () => { inHideout = false; } });
   return rows;
 }
