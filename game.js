@@ -96,6 +96,17 @@ const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 // 壁は高度で滑らかに幅変化（連続関数＝衝突がポップしない）。両側が独立に出入り＝狭い/広い/片寄り
 function wallL(y) { return CONFIG.WALL_L + Math.sin(y * 0.0042) * 22 + Math.sin(y * 0.014 + 1.7) * 10; }
 function wallR(y) { return CONFIG.WALL_R - Math.sin(y * 0.0037 + 2.3) * 22 - Math.sin(y * 0.012 + 0.5) * 10; }
+// 高度帯バイオーム（見た目）＝登るほど切替＝段階開示
+const BIOMES = [
+  { name: '麓の洞', wall: '#161c26', line: '#2a3547', bgTop: '#0b0e13', bgBottom: '#10151d' },
+  { name: '苔の層', wall: '#16261b', line: '#2a4738', bgTop: '#0b130d', bgBottom: '#101d14' },
+  { name: '燼の層', wall: '#2a1616', line: '#4a2626', bgTop: '#140b0b', bgBottom: '#1f1010' },
+  { name: '氷の層', wall: '#16222b', line: '#2a4047', bgTop: '#0b1013', bgBottom: '#101a1d' },
+];
+const BIOME_H = 120;   // m毎に切替
+const biomeAt = m => BIOMES[Math.floor(Math.max(0, m) / BIOME_H) % BIOMES.length];
+// 高度で敵を1種ずつ導入＝難易度傾斜
+function rosterAt(m) { return m < 25 ? ['target'] : m < 60 ? ['target', 'target', 'obstacle'] : m < 110 ? ['target', 'obstacle', 'floater'] : ['target', 'obstacle', 'floater', 'attacker', 'attacker']; }
 
 // 操作: A/D=移動, W/S=上下(攻撃方向), Shift=ジャンプ/壁キック, Enter=攻撃(↓ポゴ/↑上/前ネイル)
 //       Ctrl+W/A/S/D = スキル4枠
@@ -204,11 +215,12 @@ function makeEnemy(type, x, y) {
 function spawnBand(y, idx) {
   const wl = wallL(y), wr = wallR(y), span = Math.max(20, wr - wl - 60);
   const rx = () => wl + 30 + Math.random() * span;
-  const sparse = idx % 3 === 0;
-  const r = Math.random();
-  let type = r < 0.34 ? 'target' : r < 0.58 ? 'obstacle' : r < 0.80 ? 'floater' : 'attacker';
-  enemies.push(makeEnemy(type, rx(), y));
-  if (!sparse && Math.random() < 0.45) { const t2 = Math.random() < 0.5 ? 'target' : 'floater'; enemies.push(makeEnemy(t2, rx(), y - 64)); }
+  const m = -y / 100, roster = rosterAt(m), pick = () => roster[Math.floor(Math.random() * roster.length)];
+  const sparse = idx % 3 === 0;                        // 密度パルス：3バンドに1回は薄く
+  if (sparse && m > 30 && Math.random() < 0.5) return;  // 純登攀の休符区間
+  enemies.push(makeEnemy(pick(), rx(), y));
+  if (!sparse && Math.random() < Math.min(0.6, 0.2 + m / 400)) enemies.push(makeEnemy(pick(), rx(), y - 64));   // 高度で2体目↑
+  if (!sparse && m > 200 && Math.random() < 0.25) enemies.push(makeEnemy(pick(), rx(), y - 120));               // 高所は3体目も
 }
 
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => Math.abs(ax - bx) * 2 < aw + bw && Math.abs(ay - by) * 2 < ah + bh;
@@ -327,15 +339,15 @@ function fireAt(e) { const dx = player.x - e.x, dy = player.y - e.y, d = Math.hy
 // ---- render ----
 function sy(worldY) { return worldY - cameraY; }
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-function drawWalls() {
+function drawWalls(bio) {
   const step = 12;
-  ctx.fillStyle = '#161c26';
+  ctx.fillStyle = bio.wall;
   ctx.beginPath(); ctx.moveTo(0, 0); for (let s = 0; s <= H; s += step) ctx.lineTo(wallL(cameraY + s), s); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
   ctx.beginPath(); ctx.moveTo(W, 0); for (let s = 0; s <= H; s += step) ctx.lineTo(wallR(cameraY + s), s); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#222c3a'; ctx.lineWidth = 2;
+  ctx.strokeStyle = bio.line; ctx.lineWidth = 2;
   const start = Math.floor(cameraY / 100) * 100;
   for (let wy = start; wy < cameraY + H; wy += 100) { const y = sy(wy); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(wallL(wy), y); ctx.moveTo(wallR(wy), y); ctx.lineTo(W, y); ctx.stroke(); }
-  ctx.strokeStyle = '#2a3547'; ctx.lineWidth = 3;
+  ctx.strokeStyle = bio.line; ctx.lineWidth = 3;
   ctx.beginPath(); for (let s = 0; s <= H; s += step) { const x = wallL(cameraY + s); s === 0 ? ctx.moveTo(x, s) : ctx.lineTo(x, s); } ctx.stroke();
   ctx.beginPath(); for (let s = 0; s <= H; s += step) { const x = wallR(cameraY + s); s === 0 ? ctx.moveTo(x, s) : ctx.lineTo(x, s); } ctx.stroke();
 }
@@ -360,10 +372,11 @@ function drawPlayer() {
 function render() {
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0b0e13'); g.addColorStop(1, '#10151d');
+  const bio = biomeAt(-(cameraY + H * CONFIG.CAM_FOLLOW) / 100);
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, bio.bgTop); g.addColorStop(1, bio.bgBottom);
   ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
-  drawWalls();
-  if (sy(0) < H) { ctx.fillStyle = '#2a3547'; ctx.fillRect(wallL(0), sy(0), wallR(0) - wallL(0), H); }
+  drawWalls(bio);
+  if (sy(0) < H) { ctx.fillStyle = bio.line; ctx.fillRect(wallL(0), sy(0), wallR(0) - wallL(0), H); }
   for (const e of enemies) { const y = sy(e.y); if (y < -60 || y > H + 60) continue; drawEnemy(e); }
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
   drawPlayer();
@@ -383,6 +396,7 @@ function drawHUD() {
   ctx.textAlign = 'left';
   ctx.fillStyle = '#eaf2ff'; ctx.font = 'bold 22px system-ui'; ctx.fillText(`${(maxHeight / 100).toFixed(1)} m`, 14, 30);
   ctx.fillStyle = '#7f8ca0'; ctx.font = '10px system-ui'; ctx.fillText(`BEST ${(meta.bestHeight / 100).toFixed(1)}m`, 96, 21);
+  ctx.fillText(biomeAt(Math.max(0, -player.y) / 100).name, 96, 33);
   ctx.textAlign = 'right'; ctx.font = 'bold 13px system-ui';
   ctx.fillStyle = '#f1c40f'; ctx.fillText(`◆${meta.gold}`, W - 12, 22);
   ctx.fillStyle = '#a99bff'; ctx.fillText(`SP ${meta.sp}`, W - 12, 40);
