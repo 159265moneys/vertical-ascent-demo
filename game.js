@@ -94,8 +94,20 @@ cv.width = CONFIG.CANVAS_W * DPR; cv.height = CONFIG.CANVAS_H * DPR; ctx.scale(D
 const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
 
 // 壁は高度で滑らかに幅変化（連続関数＝衝突がポップしない）。両側が独立に出入り＝狭い/広い/片寄り
-function wallL(y) { return CONFIG.WALL_L + Math.sin(y * 0.0042) * 22 + Math.sin(y * 0.014 + 1.7) * 10; }
-function wallR(y) { return CONFIG.WALL_R - Math.sin(y * 0.0037 + 2.3) * 22 - Math.sin(y * 0.012 + 0.5) * 10; }
+// authoredセグメント：固定パターン(開け/隘路/広間/左寄り/右寄り)を高度で決定論的に乱択し連結。
+// 各featureは境界でenv=0に収束→壁が必ず連続(衝突・しがみつき安全)。wallL/wallRは単一真実のまま。
+const SEG_H = 720;   // 1セグメント高(px) ≈0.9画面
+const SEG_FEATURES = [
+  { inset: 0,   sway: 0 },    // 開けた区間(ベースのみ)
+  { inset: 26,  sway: 0 },    // 隘路：両壁が内へ
+  { inset: -26, sway: 0 },    // 広間：両壁が外へ
+  { inset: 0,   sway: -28 },  // 左寄り：水路が左へ
+  { inset: 0,   sway: 28 },   // 右寄り：水路が右へ
+];
+function segFeat(i) { const r = Math.abs(Math.sin(i * 12.9898) * 43758.5453); return SEG_FEATURES[Math.floor(r % SEG_FEATURES.length)]; }   // 決定論的乱択(同iは常に同パターン)
+function segShape(y) { const d = -y, i = Math.floor(d / SEG_H), t = (d - i * SEG_H) / SEG_H, f = segFeat(i), env = Math.sin(Math.PI * t); return { inset: f.inset * env, sway: f.sway * env }; }
+function wallL(y) { const s = segShape(y); return CONFIG.WALL_L + Math.sin(y * 0.0042) * 22 + Math.sin(y * 0.014 + 1.7) * 10 + s.inset + s.sway; }
+function wallR(y) { const s = segShape(y); return CONFIG.WALL_R - Math.sin(y * 0.0037 + 2.3) * 22 - Math.sin(y * 0.012 + 0.5) * 10 - s.inset + s.sway; }
 // 高度帯バイオーム（見た目）＝登るほど切替＝段階開示
 const BIOMES = [
   { name: '麓の洞', wall: '#161c26', line: '#2a3547', bgTop: '#0b0e13', bgBottom: '#10151d' },
