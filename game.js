@@ -44,6 +44,10 @@ const CONFIG = {
   HP_TARGET: 2, HP_OBSTACLE: 3, HP_FLOATER: 3, HP_ATTACKER: 4,
   // --- 敵→自分 ダメージ（1/4ハート単位）---
   DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 1, DMG_ATTACKER: 1, DMG_PROJECTILE: 1,
+  // --- ドロップ（撃破報酬・恒久層へ）＋テレグラフ ---
+  GOLD: { target: 1, obstacle: 2, floater: 2, attacker: 4 },
+  SP: { target: 1, obstacle: 1, floater: 1, attacker: 2 },
+  TELEGRAPH_LEAD: 0.5,
 
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
@@ -101,6 +105,12 @@ SPRITE_STATES.forEach(s => { const img = new Image(); img.ok = false; img.onload
 
 let player, cameraY, maxHeight, enemies, projectiles, spawnTopY, bandIndex, shake, hp0flash;
 
+// 恒久層（localStorage）：金・SP・ベスト高度は reset() で消えない＝2層セーブの恒久側
+const META_KEY = 'vertical_ascent_meta';
+function loadMeta() { try { return JSON.parse(localStorage.getItem(META_KEY)) || {}; } catch (e) { return {}; } }
+function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) {} }
+let meta = Object.assign({ gold: 0, sp: 0, bestHeight: 0 }, loadMeta());
+
 function reset() {
   player = {
     x: (CONFIG.WALL_L + CONFIG.WALL_R) / 2, y: 0, vx: 0, vy: 0, w: CONFIG.PLAYER_W, h: CONFIG.PLAYER_H,
@@ -126,11 +136,11 @@ function damage(q, knockY) {
   if (player.hpQ <= 0) {
     player.hpQ = 0; player.state = 'fallStun'; player.clingWall = 0;
     player.fallStun = Math.min(CONFIG.HEARTS_MAX * CONFIG.FALL_SEC_PER_HEART, CONFIG.FALL_TIME_CAP);
-    player.vx = 0; shake = CONFIG.SHAKE_FALL; hp0flash = 0.5;
+    player.vx = 0; shake = CONFIG.SHAKE_FALL; hp0flash = 0.5; saveMeta();
   }
 }
 
-function hitEnemy(e, dmg) { e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0) e.alive = false; }
+function hitEnemy(e, dmg) { e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false; meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); } }
 
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
 function castKenpa() { const p = player; if (p.kenpaCd > 0 || p.mp < CONFIG.KENPA_MP) return; p.mp -= CONFIG.KENPA_MP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
@@ -144,7 +154,7 @@ function makeEnemy(type, x, y) {
   if (type === 'target')   return { ...base, w: 48, h: 22, hp: CONFIG.HP_TARGET };
   if (type === 'obstacle') return { ...base, w: 42, h: 42, hp: CONFIG.HP_OBSTACLE };
   if (type === 'floater')  return { ...base, w: 40, h: 40, hp: CONFIG.HP_FLOATER };
-  return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER };
+  return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER, windup: 0 };
 }
 function spawnBand(y, idx) {
   const span = CONFIG.WALL_R - CONFIG.WALL_L - 60;
@@ -227,7 +237,7 @@ function update(dt) {
     if (e.type === 'target') e.y += CONFIG.FALLER_VY * dt;
     else if (e.type === 'obstacle') e.y += CONFIG.OBSTACLE_VY * dt;
     else if (e.type === 'floater') { e.phase += dt * CONFIG.FLOAT_SPEED; e.x = e.baseX + Math.sin(e.phase) * CONFIG.FLOAT_DRIFT_X; e.y = e.baseY + Math.cos(e.phase * 0.8) * CONFIG.FLOAT_DRIFT_Y; }
-    else { e.phase += dt * CONFIG.FLOAT_SPEED * 0.6; e.x = e.baseX + Math.sin(e.phase) * CONFIG.ATTACKER_DRIFT_X; const onScr = e.y > cameraY - 40 && e.y < cameraY + H + 40; if (onScr) { e.fireCd -= dt; if (e.fireCd <= 0) { fireAt(e); e.fireCd = CONFIG.ATTACKER_FIRE_CD; } } }
+    else { e.phase += dt * CONFIG.FLOAT_SPEED * 0.6; e.x = e.baseX + Math.sin(e.phase) * CONFIG.ATTACKER_DRIFT_X; const onScr = e.y > cameraY - 40 && e.y < cameraY + H + 40; if (onScr) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { fireAt(e); e.fireCd = CONFIG.ATTACKER_FIRE_CD; } } else { e.fireCd -= dt; if (e.fireCd <= 0) e.windup = CONFIG.TELEGRAPH_LEAD; } } }
 
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
@@ -259,7 +269,7 @@ function update(dt) {
   enemies = enemies.filter(e => e.alive && e.y < cameraY + H + 260);
   projectiles = projectiles.filter(pr => pr.alive);
 
-  const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h;
+  const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
   cameraY += ((p.y - H * CONFIG.CAM_FOLLOW) - cameraY) * Math.min(1, CONFIG.CAM_LERP * dt);
 }
 
@@ -281,7 +291,9 @@ function drawEnemy(e) {
   if (e.type === 'target') { ctx.fillStyle = flash ? '#fff' : '#27ae60'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 5); ctx.fill(); ctx.fillStyle = '#9be8bd'; ctx.beginPath(); ctx.moveTo(x - 6, y - 2); ctx.lineTo(x + 6, y - 2); ctx.lineTo(x, y + 5); ctx.fill(); return; }
   if (e.type === 'obstacle') { ctx.fillStyle = flash ? '#fff' : '#c0392b'; const s = e.w / 2; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill(); return; }
   if (e.type === 'floater') { ctx.fillStyle = flash ? '#fff' : '#16a2b8'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); ctx.strokeStyle = '#0d6f7e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, e.w / 2 - 5, 0, 6.2832); ctx.stroke(); return; }
-  ctx.fillStyle = flash ? '#fff' : '#8e44ad'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 8); ctx.fill(); ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fill();
+  ctx.fillStyle = flash ? '#fff' : '#8e44ad'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 8); ctx.fill();
+  if (e.windup > 0) { const t = 1 - e.windup / CONFIG.TELEGRAPH_LEAD; ctx.strokeStyle = `rgba(255,80,80,${0.4 + 0.5 * t})`; ctx.lineWidth = 2 + 3 * t; ctx.beginPath(); ctx.arc(x, y, 10 + 14 * t, 0, 6.2832); ctx.stroke(); }
+  ctx.fillStyle = e.windup > 0 ? '#ff5050' : '#f1c40f'; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fill();
 }
 function spriteKey() { const p = player; if (p.state === 'fallStun') return 'fall'; if (p.state === 'cling') return 'cling'; if (p.pogoTimer > 0) return 'pogo'; if (p.upTimer > 0) return 'upattack'; if (p.vy < -60) return 'wallkick'; if (p.vy > 120) return 'fall'; return 'idle'; }
 function drawPlayer() {
@@ -316,6 +328,11 @@ function render() {
 function drawHUD() {
   ctx.textAlign = 'left';
   ctx.fillStyle = '#eaf2ff'; ctx.font = 'bold 22px system-ui'; ctx.fillText(`${(maxHeight / 100).toFixed(1)} m`, 14, 30);
+  ctx.fillStyle = '#7f8ca0'; ctx.font = '10px system-ui'; ctx.fillText(`BEST ${(meta.bestHeight / 100).toFixed(1)}m`, 96, 21);
+  ctx.textAlign = 'right'; ctx.font = 'bold 13px system-ui';
+  ctx.fillStyle = '#f1c40f'; ctx.fillText(`◆${meta.gold}`, W - 12, 22);
+  ctx.fillStyle = '#a99bff'; ctx.fillText(`SP ${meta.sp}`, W - 12, 40);
+  ctx.textAlign = 'left';
   const total = CONFIG.HEARTS_MAX * CONFIG.QPH; let px = 14;
   for (let i = 0; i < total; i++) { ctx.fillStyle = i < player.hpQ ? '#e74c3c' : '#3a4150'; roundRect(px, 44, 7, 14, 2); ctx.fill(); px += 9; if ((i + 1) % CONFIG.QPH === 0) px += 6; }
   ctx.fillStyle = '#22303f'; ctx.fillRect(14, 64, 96, 7);
