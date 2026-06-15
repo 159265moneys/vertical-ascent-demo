@@ -29,7 +29,7 @@ const CONFIG = {
 
   // --- HP（ハート・1/4刻み）---
   HEARTS_MAX: 3, QPH: 4,
-  FALL_SEC_PER_HEART: 1.0, FALL_TIME_CAP: 7, IFRAME: 0.9,   // T12=時間型：死亡でハート数×1s落下(空中復帰+HP全回復)。上限7s≈100m<敵保持窓120m=空区間に落ちない
+  FALL_SEC_PER_HEART: 1.0, IFRAME: 0.9,   // T12=時間型：死亡で器(ハート)数×1s落下・上限なし→空中で立て直し+HP全回復(床到達でも復帰)
 
   // --- MP（共有CT・自動回復）---
   MP_MAX: 100, MP_REGEN: 30,
@@ -60,7 +60,7 @@ const CONFIG = {
 
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
-  BAND_GAP: 180, ENEMY_KEEP: 12000, SHAKE_HIT: 9, SHAKE_FALL: 18,
+  BAND_GAP: 180, ENEMY_KEEP: 24000, SHAKE_HIT: 9, SHAKE_FALL: 18,   // 保持窓=落下上限撤廃に合わせ拡大(~14器/パラ無の落下≈240mまで登り直しに敵が残る。超高器は末端のみ空)
   // ボス＋一時足場(T11)。ボスは高度BOSS_EVERY毎に出現＝任意撃破(スルー可・保持される)
   BOSS_EVERY: 150, BOSS_HP: 28, BOSS_W: 108, BOSS_H: 108, DMG_BOSS: 2,
   BOSS_DRIFT_X: 60, BOSS_BOB_Y: 22, BOSS_PHASE_SPD: 1.0,
@@ -208,7 +208,7 @@ function damage(q, knockY) {
   shake = Math.max(shake, CONFIG.SHAKE_HIT);
   if (player.hpQ <= 0) {
     player.hpQ = 0; player.state = 'fallStun'; player.clingWall = 0;
-    player.fallStun = Math.min((CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.FALL_SEC_PER_HEART, CONFIG.FALL_TIME_CAP);
+    player.fallStun = (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.FALL_SEC_PER_HEART;   // 器(ハート)数×1s・上限なし
     player.vx = 0; shake = CONFIG.SHAKE_FALL; hp0flash = 0.5; saveMeta();
   }
 }
