@@ -167,7 +167,7 @@ const SPRITE_KEYS = ['idle','run','cling','jump','fall','atk','pogo','up'].flatM
 const sprites = {};
 SPRITE_KEYS.forEach(s => { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/${s}.png?v=${SPRITE_VER}`; sprites[s] = img; });
 
-let player, cameraY, maxHeight, enemies, projectiles, platforms, spawnTopY, bandIndex, bossNextH, shake, hp0flash;
+let player, cameraY, maxHeight, enemies, projectiles, platforms, sparks, spawnTopY, bandIndex, bossNextH, hitStop, shake, hp0flash;
 
 // 恒久層（localStorage）：金・SP・ベスト高度は reset() で消えない＝2層セーブの恒久側
 const META_KEY = 'vertical_ascent_meta';
@@ -196,7 +196,7 @@ function reset() {
     hpQ: maxQ(), mp: maxMP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
-  enemies = []; projectiles = []; platforms = [];
+  enemies = []; projectiles = []; platforms = []; sparks = []; hitStop = 0;
   spawnTopY = -260; bandIndex = 0; bossNextH = CONFIG.BOSS_EVERY; shake = 0; hp0flash = 0; paused = false;
 }
 
@@ -215,7 +215,8 @@ function damage(q, knockY) {
   }
 }
 
-function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; if (e.hp <= 0 && e.alive) { e.alive = false;
+function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
+function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; hitStop = Math.max(hitStop, 0.045); shake = Math.max(shake, 5); spawnSparks(e.x, e.y); if (e.hp <= 0 && e.alive) { e.alive = false;
   if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
   else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
 
@@ -365,6 +366,8 @@ function update(dt) {
 
   enemies = enemies.filter(e => e.alive && e.y < cameraY + H + CONFIG.ENEMY_KEEP);   // 死んだ敵=倒したら恒久消滅／生存(スルー)敵は遥か下まで保持→降りれば再会
   projectiles = projectiles.filter(pr => pr.alive);
+  for (const sp of sparks) { sp.life -= dt; sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.vy += 700 * dt; sp.vx *= 0.92; }
+  sparks = sparks.filter(sp => sp.life > 0);
   for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
 
   const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
@@ -423,25 +426,19 @@ function spriteKey() {
   const dir = (p.state === 'cling') ? (p.clingWall > 0 ? 'r' : 'l') : (p.facing < 0 ? 'l' : 'r');   // しがみつきは壁側で向き決定
   return act + '_' + dir;
 }
-function slashCrescent(cx, cy, dir, prog) {
-  // 先細りクレッセント(中央太・端尖)を1枚パス化。dir=方向, prog=0..1で外へ広がる
-  const N = 16, span = 1.05, sweep = (prog - 0.5) * 0.75, R = 42 + prog * 22;
-  const thick = 27 * (1 - prog * 0.5);                 // 中央の太さ(進むほど薄く=伸びる軌跡)
-  const a0 = dir - span + sweep, a1 = dir + span + sweep;
+function drawSlash(cx, cy, dir, prog) {
+  // 本物のスイープ：全弧[dir-S,dir+S]のうち可視範囲[tail,head]が前進→出切る→末端から消える
+  const head = Math.min(1, prog * 2), tail = Math.max(0, prog * 2 - 1);
+  if (head <= tail) return;
+  const S = 1.32, base = dir - S, a0 = base + tail * S * 2, a1 = base + head * S * 2;   // 可視サブ弧
+  const R = 50, thick = 12, N = 18;                     // 細いブーメラン形
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
   ctx.beginPath();
   for (let i = 0; i <= N; i++) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R + t / 2; const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
   for (let i = N; i >= 0; i--) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R - t / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
   ctx.closePath();
-}
-function drawSlash(cx, cy, dir, prog) {
-  // 本体＋残像トレイル(smear)を加算合成で発光させる
-  ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  for (let g = 3; g >= 0; g--) {                        // g=0が本体、奥ほど過去の振り＝薄い残像
-    const p = prog - g * 0.13; if (p < 0 || p > 1) continue;
-    const fade = (1 - p) * (g === 0 ? 1 : 0.28);
-    slashCrescent(cx, cy, dir, p);
-    ctx.fillStyle = `rgba(255,255,255,${0.85 * fade})`; ctx.fill();
-  }
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R, 3.6, 0, 6.2832); ctx.fill();   // 切っ先の光
   ctx.restore();
 }
 function drawPlayer() {
@@ -464,6 +461,7 @@ function render() {
   for (const pl of platforms) { const py = sy(pl.y); if (py < -40 || py > H + 40) continue; const a = Math.min(1, pl.life / 1.2); ctx.fillStyle = `rgba(126,232,192,${0.3 + 0.45 * a})`; roundRect(pl.x - pl.w / 2, py - pl.h / 2, pl.w, pl.h, 5); ctx.fill(); ctx.strokeStyle = `rgba(180,255,230,${0.6 * a})`; ctx.lineWidth = 2; ctx.stroke(); }   // ボスの一時足場(寿命で点滅消失)
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
   drawPlayer();
+  if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const a = Math.min(1, sp.life * 6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } ctx.restore(); }   // 着弾火花
   const p = player;
   if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, Math.PI / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE);
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, -Math.PI / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE);
@@ -560,6 +558,6 @@ function drawHideout() {
 
 const STEP = 1 / 120;
 let acc = 0, last = performance.now();
-function frame(t) { let dt = (t - last) / 1000; last = t; acc += Math.min(dt, 0.1); while (acc >= STEP) { if (!paused) update(STEP); acc -= STEP; } render(); requestAnimationFrame(frame); }
+function frame(t) { let dt = (t - last) / 1000; last = t; acc += Math.min(dt, 0.1); while (acc >= STEP) { if (hitStop > 0) { hitStop -= STEP; acc -= STEP; continue; } if (!paused) update(STEP); acc -= STEP; } render(); requestAnimationFrame(frame); }   // hitStop中はupdate凍結＝手応え
 reset();
 requestAnimationFrame(frame);
