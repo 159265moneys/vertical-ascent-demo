@@ -34,10 +34,10 @@
 
 <script>
 // 命名規則: demo/assets/sprites/<key>.png （生成したら自動表示）
-const VER = 7;
+const VER = 8;
 const DATA = {
   "主人公": [
-    {key:"idle", nm:"のぼるもの", rd:"主人公", tag:"hero", fl:"最下層で目覚めた、名も記憶もない白い小さな存在。ただひとつ『上へ』という衝動だけがある。大きなハサミをひとふり携える。"},
+    {key:"idle_r", nm:"のぼるもの", rd:"主人公", tag:"hero", fl:"最下層で目覚めた、名も記憶もない白い小さな存在。ただひとつ『上へ』という衝動だけがある。大きなハサミをひとふり携える。"},
   ],
   "世界の管理者（敵）": [
     {key:"enemy_junkai", nm:"巡回兵", rd:"じゅんかいへい", tag:"enemy", fl:"群れで来る小さな兵。弱いが数で押す。最下層から現れる。"},
@@ -74,7 +74,7 @@ for (const [section, list] of Object.entries(DATA)) {
   root.appendChild(g);
 }
 // 主人公モーション(6ポーズ)
-const POSES = ["idle","cling","wallkick","fall","pogo","upattack"];
+const POSES = ["idle_r","idle_l","run_r","run_l","cling_r","cling_l","jump_r","jump_l","fall_r","fall_l","atk_r","atk_l","pogo_r","pogo_l","up_r","up_l"];
 const ph = document.createElement("h2"); ph.textContent = "主人公モーション"; root.appendChild(ph);
 const pg = document.createElement("div"); pg.className = "grid";
 for (const p of POSES) {
