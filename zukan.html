@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>図鑑 — 縦型登攀</title>
+<style>
+  :root{ --bg:#0a0c10; --panel:#11151c; --line:#222c3a; --txt:#e8eef6; --sub:#8593a6; --accent:#7ee8c0; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,"Hiragino Kaku Gothic ProN",sans-serif;padding:28px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:.04em}
+  .lead{color:var(--sub);font-size:12px;margin:0 0 26px}
+  h2{font-size:14px;color:var(--accent);border-bottom:1px solid var(--line);padding-bottom:6px;margin:34px 0 16px;letter-spacing:.06em}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+  .art{height:150px;display:flex;align-items:center;justify-content:center;background:
+       radial-gradient(120% 90% at 50% 30%, #161c26 0%, #0c0f14 100%);border-radius:8px;overflow:hidden;position:relative}
+  .art img{max-height:138px;max-width:90%;image-rendering:auto;filter:drop-shadow(0 4px 10px #0008)}
+  .ph{color:#3c4658;font-size:11px;letter-spacing:.1em;border:1px dashed #2c3848;border-radius:6px;padding:18px 10px;text-align:center;width:80%}
+  .nm{font-size:15px;font-weight:700}
+  .rd{font-size:10px;color:var(--sub);margin-left:6px;font-weight:400}
+  .tag{align-self:flex-start;font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--sub)}
+  .tag.hero{color:#efe9c8;border-color:#5b5430}
+  .tag.enemy{color:#e7a6a0;border-color:#5b3030}
+  .tag.boss{color:#c9b6f0;border-color:#4a3a6a}
+  .fl{font-size:11.5px;line-height:1.6;color:#c2ccd9}
+  .note{font-size:10px;color:#566273}
+</style>
+</head>
+<body>
+<h1>図鑑 <span style="color:var(--sub);font-weight:400;font-size:13px">— 登場するもの</span></h1>
+<p class="lead">※開発用の一覧（ゲーム本体とは別ページ）。スプライトを生成すると自動でここに表示されます。未生成は枠だけ。</p>
+<div id="root"></div>
+
+<script>
+// 命名規則: demo/assets/sprites/<key>.png （生成したら自動表示）
+const VER = 7;
+const DATA = {
+  "主人公": [
+    {key:"idle", nm:"のぼるもの", rd:"主人公", tag:"hero", fl:"最下層で目覚めた、名も記憶もない白い小さな存在。ただひとつ『上へ』という衝動だけがある。大きなハサミをひとふり携える。"},
+  ],
+  "世界の管理者（敵）": [
+    {key:"enemy_junkai", nm:"巡回兵", rd:"じゅんかいへい", tag:"enemy", fl:"群れで来る小さな兵。弱いが数で押す。最下層から現れる。"},
+    {key:"enemy_souji", nm:"大掃除屋", rd:"おおそうじや", tag:"enemy", fl:"大きく、遅い。古いものを飲み込んで片付ける。倒すと多くを残す。"},
+    {key:"enemy_souhei", nm:"僧兵", rd:"そうへい", tag:"enemy", fl:"見つけると一直線に突っ込んでくる古い兵。"},
+    {key:"enemy_knight", nm:"白い騎士", rd:"しろいきし", tag:"enemy", fl:"どこまでも追尾する。倒してもすぐ次が来る。中盤以降。"},
+    {key:"enemy_yumite", nm:"弓手", rd:"ゆみて", tag:"enemy", fl:"遠くから、追尾する弾を放つ。"},
+    {key:"enemy_nuri", nm:"壁塗り", rd:"かべぬり", tag:"enemy", fl:"戦わない。通った跡（壁の傷）を黙々と塞ぐ。放置すると道がふさがる。"},
+    {key:"enemy_shohei", nm:"哨兵", rd:"しょうへい", tag:"enemy", fl:"戦闘力はないが、見つかると周囲の全てがこちらを認識する。見つからぬが上策。"},
+  ],
+  "ボス": [
+    {key:"boss_monban", nm:"門番", rd:"もんばん／赤い河", tag:"boss", fl:"最初の白い騎士。小さく弱いが、その問いは妙に重い。『お前は……誰だ』"},
+    {key:"boss_romori", nm:"炉守", rd:"ろもり／拍つ炉", tag:"boss", fl:"炉の弁を守る巨大な掃除屋。拍動に合わせて壁ごと押し潰す。"},
+    {key:"boss_kazeshi", nm:"風師", rd:"かぜし／霧袋", tag:"boss", fl:"霧袋の気流を統べる翼。風で壁に叩きつける。"},
+    {key:"boss_ohoshi", nm:"大濾し", rd:"おおこし／濾す市場", tag:"boss", fl:"異物を濾し取ろうと半分飲み込んで吐き出す巨体。『お前を分解できない』"},
+    {key:"boss_hakushou", nm:"白将", rd:"はくしょう／白い巡礼路", tag:"boss", fl:"白い騎士の長。ここまでで最強。明確な殺意で語る最初の敵。"},
+    {key:"boss_banin", nm:"最後の番人", rd:"さいごのばんにん／記憶の庭", tag:"boss", fl:"最奥に静かに座す。主人公と同じ姿・同じ技で立ちはだかる、鏡写しの存在。"},
+  ],
+};
+const root = document.getElementById("root");
+for (const [section, list] of Object.entries(DATA)) {
+  const h = document.createElement("h2"); h.textContent = section; root.appendChild(h);
+  const g = document.createElement("div"); g.className = "grid";
+  for (const c of list) {
+    const card = document.createElement("div"); card.className = "card";
+    card.innerHTML =
+      `<div class="art"><img src="assets/sprites/${c.key}.png?v=${VER}" alt=""
+         onerror="this.outerHTML='<div class=ph>未生成<br>${c.key}.png</div>'"></div>
+       <div><span class="nm">${c.nm}</span><span class="rd">${c.rd}</span></div>
+       <span class="tag ${c.tag}">${c.tag==='hero'?'主人公':c.tag==='boss'?'ボス':'敵'}</span>
+       <div class="fl">${c.fl}</div>`;
+    g.appendChild(card);
+  }
+  root.appendChild(g);
+}
+// 主人公モーション(6ポーズ)
+const POSES = ["idle","cling","wallkick","fall","pogo","upattack"];
+const ph = document.createElement("h2"); ph.textContent = "主人公モーション"; root.appendChild(ph);
+const pg = document.createElement("div"); pg.className = "grid";
+for (const p of POSES) {
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML =
+    `<div class="art"><img src="assets/sprites/${p}.png?v=${VER}" alt=""
+       onerror="this.outerHTML='<div class=ph>未生成<br>${p}</div>'"></div>
+     <div><span class="nm" style="font-size:13px">${p}</span></div>`;
+  pg.appendChild(card);
+}
+root.appendChild(pg);
+</script>
+</body>
+</html>
