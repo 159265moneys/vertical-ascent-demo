@@ -423,6 +423,27 @@ function spriteKey() {
   const dir = (p.state === 'cling') ? (p.clingWall > 0 ? 'r' : 'l') : (p.facing < 0 ? 'l' : 'r');   // しがみつきは壁側で向き決定
   return act + '_' + dir;
 }
+function slashCrescent(cx, cy, dir, prog) {
+  // 先細りクレッセント(中央太・端尖)を1枚パス化。dir=方向, prog=0..1で外へ広がる
+  const N = 16, span = 1.05, sweep = (prog - 0.5) * 0.75, R = 42 + prog * 22;
+  const thick = 27 * (1 - prog * 0.5);                 // 中央の太さ(進むほど薄く=伸びる軌跡)
+  const a0 = dir - span + sweep, a1 = dir + span + sweep;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R + t / 2; const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  for (let i = N; i >= 0; i--) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R - t / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+  ctx.closePath();
+}
+function drawSlash(cx, cy, dir, prog) {
+  // 本体＋残像トレイル(smear)を加算合成で発光させる
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (let g = 3; g >= 0; g--) {                        // g=0が本体、奥ほど過去の振り＝薄い残像
+    const p = prog - g * 0.13; if (p < 0 || p > 1) continue;
+    const fade = (1 - p) * (g === 0 ? 1 : 0.28);
+    slashCrescent(cx, cy, dir, p);
+    ctx.fillStyle = `rgba(255,255,255,${0.85 * fade})`; ctx.fill();
+  }
+  ctx.restore();
+}
 function drawPlayer() {
   const p = player, x = p.x, y = sy(p.y);
   if (p.iframe > 0 && Math.floor(p.iframe * 20) % 2 === 0) return;
@@ -444,9 +465,9 @@ function render() {
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
   drawPlayer();
   const p = player;
-  if (p.pogoTimer > 0) { const b = pogoBox(); ctx.fillStyle = 'rgba(255,220,80,.30)'; ctx.fillRect(b.x - b.w / 2, sy(b.y) - b.h / 2, b.w, b.h); }
-  if (p.upTimer > 0) { const b = upBox(); ctx.fillStyle = 'rgba(120,200,255,.30)'; ctx.fillRect(b.x - b.w / 2, sy(b.y) - b.h / 2, b.w, b.h); }
-  if (p.nailTimer > 0) { const b = nailBox(); ctx.fillStyle = 'rgba(236,240,241,.30)'; ctx.fillRect(b.x - b.w / 2, sy(b.y) - b.h / 2, b.w, b.h); }
+  if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, Math.PI / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE);
+  if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, -Math.PI / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE);
+  if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), p.facing < 0 ? Math.PI : 0, 1 - p.nailTimer / CONFIG.NAIL_ACTIVE);
   if (p.spinTimer > 0) { ctx.strokeStyle = `rgba(255,255,255,${0.5 * p.spinTimer / CONFIG.SPIN_ACTIVE})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, sy(p.y), CONFIG.SPIN_R, 0, 6.2832); ctx.stroke(); }
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
