@@ -427,10 +427,12 @@ function spriteKey() {
   return act + '_' + dir;
 }
 function drawSlash(cx, cy, dir, prog) {
-  // 本物のスイープ：全弧[dir-S,dir+S]のうち可視範囲[tail,head]が前進→出切る→末端から消える
+  // スイープ：可視範囲[tail,head]が画面上側の端から下へ伸びて出切り、上端から消える。左右とも上→下で統一
   const head = Math.min(1, prog * 2), tail = Math.max(0, prog * 2 - 1);
   if (head <= tail) return;
-  const S = 1.32, base = dir - S, a0 = base + tail * S * 2, a1 = base + head * S * 2;   // 可視サブ弧
+  const S = 1.32, e0 = dir - S, e1 = dir + S;
+  const top = Math.sin(e0) <= Math.sin(e1) ? e0 : e1, bot = (top === e0) ? e1 : e0;   // 上側の端を起点に
+  const a0 = top + (bot - top) * tail, a1 = top + (bot - top) * head;
   const R = 50, thick = 12, N = 18;                     // 細いブーメラン形
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   ctx.beginPath();
@@ -438,7 +440,6 @@ function drawSlash(cx, cy, dir, prog) {
   for (let i = N; i >= 0; i--) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R - t / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
   ctx.closePath();
   ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R, 3.6, 0, 6.2832); ctx.fill();   // 切っ先の光
   ctx.restore();
 }
 function drawPlayer() {
