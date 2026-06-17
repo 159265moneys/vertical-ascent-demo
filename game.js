@@ -53,7 +53,7 @@ const CONFIG = {
   HP_TURRET: 3, TURRET_FIRE_CD: 2.2, TURRET_PROJ_V: 150, TURRET_ATK_POSE: 0.3, TURRET_PULSE_T: 0.45, TURRET_DRAW_H: 58,   // 砲台：HP/発射間隔/弾速(遅)/解放表示尺/鼓動間隔/描画高
   HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 74, DMG_ASSASSIN: 1, ASN_BOOM_H: 88, ASN_BOOM_OFF: 50,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高(1.2倍)/接触ダメ/ブーム高/前出し
   HP_ROCK: 3, ROCK_DRIFT_X: 34, ROCK_DRIFT_SPD: 0.7, ROCK_PULSE: 0.09, ROCK_PULSE_SPD: 3.0, ROCK_TELE: 1.5, ROCK_TRIGGER_X: 80, ROCK_DROP_GRAV: 1500, ROCK_DRAW_H: 56, DMG_ROCK: 1,   // 紫の岩：HP/漂い幅/漂い速/鼓動量/鼓動速/ため尺/発動横範囲/落下重力/描画高/接触ダメ
-  HP_GHOST: 3, GHOST_CHASE: 46, GHOST_FRAME_T: 0.14, GHOST_DRAW_H: 58, GHOST_ORBIT_SPD: 1.0, GHOST_ORBIT_R: 44, GHOST_ORB_H: 19, GHOST_ORB_PULSE: 0.38, GHOST_ORB_HITR: 10, DMG_GHOST: 1, GHOST_DEATH_T: 0.55,   // 毒ゴースト：HP/追尾速/浮遊コマ間隔/描画高/回転速(遅)/軌道半径/球サイズ/球大小幅/球当たり半径/接触ダメ/死亡尺
+  HP_GHOST: 3, GHOST_CHASE: 46, GHOST_FRAME_T: 0.26, GHOST_DRAW_H: 80, GHOST_ORBIT_SPD: 1.0, GHOST_ORBIT_R: 56, GHOST_ORB_H: 22, GHOST_ORB_PULSE: 0.38, GHOST_ORB_HITR: 11, DMG_GHOST: 1, GHOST_DEATH_T: 0.55,   // 毒ゴースト：HP/追尾速/浮遊コマ間隔(遅め)/描画高(大)/回転速(遅)/軌道半径/球サイズ/球大小幅/球当たり半径/接触ダメ/死亡尺
   // --- 敵→自分 ダメージ（1/4ハート単位）---
   DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 1, DMG_ATTACKER: 1, DMG_PROJECTILE: 1,
   // --- ドロップ（撃破報酬・恒久層へ）＋テレグラフ ---
@@ -297,7 +297,7 @@ function makeEnemy(type, x, y) {
   if (type === 'turret')   return { ...base, w: 46, h: 46, hp: CONFIG.HP_TURRET, side: x < (wallL(y) + wallR(y)) / 2 ? -1 : 1, anim: Math.random(), windup: 0, atkPose: 0, fireCd: CONFIG.TURRET_FIRE_CD * (0.4 + Math.random() * 0.6) };
   if (type === 'assassin') { const s = x < (wallL(y) + wallR(y)) / 2 ? -1 : 1; return { ...base, w: 46, h: 53, hp: CONFIG.HP_ASSASSIN, side: s, leapDir: -s, state: 'cling', t: CONFIG.ASN_CD * (0.4 + Math.random() * 0.8), anim: 0 }; }   // side=壁, leapDir=跳ぶ向き(反対壁=主人公側)
   if (type === 'rock')     return { ...base, w: 44, h: 44, hp: CONFIG.HP_ROCK, state: 'float', t: 0, vy: 0 };   // float→tele(赤点滅1.5s)→drop(落下)
-  if (type === 'ghost')    return { ...base, w: 40, h: 46, hp: CONFIG.HP_GHOST, variant: Math.random() < 0.5 ? 0 : 1, anim: Math.random(), orbit: Math.random() * 6.28 };   // variant=A/B(両案ランダムで出す), orbit=毒球回転位相
+  if (type === 'ghost')    return { ...base, w: 50, h: 58, hp: CONFIG.HP_GHOST, variant: 0, face: 1, anim: Math.random(), orbit: Math.random() * 6.28 };   // A採用(variant0固定), face=向き(進行方向で反転), orbit=毒球回転位相
   if (type === 'boss')     return { ...base, w: CONFIG.BOSS_W, h: CONFIG.BOSS_H, hp: CONFIG.BOSS_HP, hpMax: CONFIG.BOSS_HP, windup: 0, atkCd: CONFIG.BOSS_ATK_CD, mode: 0 };
   return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER, windup: 0 };
 }
@@ -420,6 +420,7 @@ function update(dt) {
     else if (e.type === 'ghost') {
       e.anim += dt; e.orbit += dt * CONFIG.GHOST_ORBIT_SPD;   // ゆっくり回転
       const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1;
+      if (Math.abs(dx) > 2) e.face = dx > 0 ? 1 : -1;   // 進行(追尾)方向で向き
       e.x += (dx / d) * CONFIG.GHOST_CHASE * dt; e.y += (dy / d) * CONFIG.GHOST_CHASE * dt;   // ふわふわ追尾
       for (let i = 0; i < 5; i++) { const o = ghostOrb(e, i); if (overlap(p.x, p.y, p.w, p.h, o.ox, o.oy, CONFIG.GHOST_ORB_HITR * 2, CONFIG.GHOST_ORB_HITR * 2)) { damage(CONFIG.DMG_GHOST, -300); break; } }   // 回転する毒球の接触ダメ
     }
@@ -554,7 +555,7 @@ function drawEnemy(e) {
   if (e.type === 'ghost') {
     const set = e.variant ? ghostB : ghostA;
     const img = set[Math.floor(e.anim / CONFIG.GHOST_FRAME_T) % 8];
-    if (img && img.ok) { const dh = CONFIG.GHOST_DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, x - dw / 2, y - dh / 2, dw, dh); }
+    if (img && img.ok) { const dh = CONFIG.GHOST_DRAW_H, dw = dh * (img.width / img.height); ctx.save(); ctx.translate(x, y); if (e.face < 0) ctx.scale(-1, 1); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore(); }   // 進行方向で左右反転(本体のみ)
     else { ctx.fillStyle = flash ? '#fff' : '#9b86c4'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); }
     if (orbImg.ok) for (let i = 0; i < 5; i++) { const o = ghostOrb(e, i); const sc = CONFIG.GHOST_ORB_H * (1 + Math.sin(e.orbit * 3 + i * (6.2832 / 5)) * CONFIG.GHOST_ORB_PULSE); const ow = sc * (orbImg.width / orbImg.height); ctx.drawImage(orbImg, o.ox - ow / 2, sy(o.oy) - sc / 2, ow, sc); }   // 毒球5個＝順々に大小(波)しつつ回転
     return;
