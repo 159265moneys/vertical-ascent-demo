@@ -34,7 +34,7 @@
 
 <script>
 // 命名規則: demo/assets/sprites/<key>.png （生成したら自動表示）
-const VER = 13;
+const VER = 14;
 const DATA = {
   "主人公": [
     {key:"idle_r", nm:"のぼるもの", rd:"主人公", tag:"hero", fl:"最下層で目覚めた、名も記憶もない白い小さな存在。ただひとつ『上へ』という衝動だけがある。大きなハサミをひとふり携える。"},
@@ -86,6 +86,19 @@ for (const p of POSES) {
   pg.appendChild(card);
 }
 root.appendChild(pg);
+// 敵候補(16・配役未定) — assets/sprites/enemies/enemy_01..16.png（左上から行優先）
+const ch2 = document.createElement("h2"); ch2.textContent = "敵候補（16・配役未定）"; root.appendChild(ch2);
+const cg = document.createElement("div"); cg.className = "grid";
+for (let i = 1; i <= 16; i++) {
+  const id = String(i).padStart(2, "0");
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML =
+    `<div class="art"><img src="assets/sprites/enemies/enemy_${id}.png?v=${VER}" alt=""
+       onerror="this.outerHTML='<div class=ph>未生成<br>enemy_${id}</div>'"></div>
+     <div><span class="nm" style="font-size:13px">enemy_${id}</span></div>`;
+  cg.appendChild(card);
+}
+root.appendChild(cg);
 </script>
 </body>
 </html>
