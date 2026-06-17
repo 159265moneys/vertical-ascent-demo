@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>毒ゴースト 比較 A / B</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0e13;color:#e8eef6;font-family:system-ui,"Hiragino Kaku Gothic ProN",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+  h1{font-size:18px;margin:0;letter-spacing:.04em;font-weight:700}
+  p{margin:0;font-size:12px;color:#8593a6}
+  canvas{background:radial-gradient(120% 90% at 50% 35%,#161c26 0%,#0a0d12 100%);border:1px solid #222c3a;border-radius:12px}
+</style>
+</head>
+<body>
+<h1>毒ゴースト 比較 — 採用する方を選んで</h1>
+<p>左 = <b>A</b>（丸め）／ 右 = <b>B</b>（細長）。浮遊アニメ＋毒球5個の回転(順々に大小)を再現。</p>
+<canvas id="c" width="760" height="480"></canvas>
+<script>
+const V = 19;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const load = src => { const i = new Image(); i.ok = false; i.onload = () => i.ok = true; i.src = src; return i; };
+const A = [], B = [];
+for (let i = 1; i <= 8; i++) { const n = String(i).padStart(2, '0'); A.push(load(`assets/sprites/enemies/ghostA_${n}.png?v=${V}`)); B.push(load(`assets/sprites/enemies/ghostB_${n}.png?v=${V}`)); }
+const orb = load(`assets/sprites/enemies/orb_01.png?v=${V}`);
+
+// 表示用パラメータ(ゲームの見た目を拡大して再現)
+const DRAW_H = 140, ORBIT_R = 100, ORB_H = 44, PULSE = 0.42, FRAME_T = 0.14, ORBIT_SPD = 1.0;
+const AOFF = [0, 0.22, -0.16, 0.1, -0.06], RVAR = [0, 0.1, -0.07, 0.05, -0.04];
+
+function drawGhost(frames, cx, cy, t, label) {
+  // 毒球(本体の後ろ)
+  if (orb.ok) for (let i = 0; i < 5; i++) {
+    const ang = t * ORBIT_SPD + i * (6.2832 / 5) + AOFF[i], rad = ORBIT_R * (1 + RVAR[i]);
+    const ox = cx + Math.cos(ang) * rad, oy = cy + Math.sin(ang) * rad;
+    const sc = ORB_H * (1 + Math.sin(t * 3 + i * (6.2832 / 5)) * PULSE), ow = sc * (orb.width / orb.height);
+    ctx.drawImage(orb, ox - ow / 2, oy - sc / 2, ow, sc);
+  }
+  // 本体(浮遊8コマ)
+  const img = frames[Math.floor(t / FRAME_T) % 8];
+  if (img && img.ok) { const dh = DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh); }
+  // ラベル
+  ctx.fillStyle = '#7ee8c0'; ctx.font = 'bold 40px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(label, cx, cy + DRAW_H / 2 + 70);
+}
+
+let t0 = null;
+function frame(ts) {
+  if (t0 === null) t0 = ts;
+  const t = (ts - t0) / 1000;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  drawGhost(A, 200, 210, t, 'A');
+  drawGhost(B, 560, 210, t, 'B');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

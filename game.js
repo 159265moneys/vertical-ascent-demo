@@ -548,7 +548,7 @@ function drawEnemy(e) {
     const img = set[Math.floor(e.anim / CONFIG.GHOST_FRAME_T) % 8];
     if (img && img.ok) { const dh = CONFIG.GHOST_DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, x - dw / 2, y - dh / 2, dw, dh); }
     else { ctx.fillStyle = flash ? '#fff' : '#9b86c4'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); }
-    if (orbImg.ok) for (let i = 0; i < 5; i++) { const o = ghostOrb(e, i); const sc = CONFIG.GHOST_ORB_H * (1 + Math.sin(e.orbit * 2 + i * 1.3) * CONFIG.GHOST_ORB_PULSE); const ow = sc * (orbImg.width / orbImg.height); ctx.drawImage(orbImg, o.ox - ow / 2, sy(o.oy) - sc / 2, ow, sc); }   // 毒球5個＝大小しつつ回転
+    if (orbImg.ok) for (let i = 0; i < 5; i++) { const o = ghostOrb(e, i); const sc = CONFIG.GHOST_ORB_H * (1 + Math.sin(e.orbit * 3 + i * (6.2832 / 5)) * CONFIG.GHOST_ORB_PULSE); const ow = sc * (orbImg.width / orbImg.height); ctx.drawImage(orbImg, o.ox - ow / 2, sy(o.oy) - sc / 2, ow, sc); }   // 毒球5個＝順々に大小(波)しつつ回転
     return;
   }
   if (e.type === 'boss') {
