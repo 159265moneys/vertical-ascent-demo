@@ -478,7 +478,7 @@ function drawEnemy(e) {
     if (img && img.ok) { const dh = CONFIG.TURRET_DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); }
     else { ctx.fillStyle = flash ? '#fff' : '#cdbf9a'; ctx.beginPath(); ctx.arc(0, 0, e.w / 2, 0, 6.2832); ctx.fill(); }
     if (e.windup > 0) { const t = 1 - e.windup / CONFIG.TELEGRAPH_LEAD; ctx.strokeStyle = `rgba(255,80,80,${0.3 + 0.5 * t})`; ctx.lineWidth = 2 + 3 * t; ctx.beginPath(); ctx.arc(0, 0, 22 + 16 * t, 0, 6.2832); ctx.stroke(); }   // ため視認リング
-    return;
+    ctx.restore(); return;
   }
   if (e.type === 'assassin') {
     const set = e.leapDir > 0 ? e03r : e03l;
