@@ -23,9 +23,9 @@ const CONFIG = {
   // --- 攻撃（基礎攻撃力=1.0 が原器）---
   ATK_BASE: 1.0,
   POGO_BOUNCE: -1080,
-  POGO_ACTIVE: 0.22, POGO_COOLDOWN: 0.06, POGO_W: 88, POGO_H: 60, POGO_REACH: 6, POGO_MULT: 1.2,
-  UPATK_ACTIVE: 0.16, UPATK_COOLDOWN: 0.18, UPATK_W: 72, UPATK_H: 56, UPATK_REACH: 4, UPATK_MULT: 1.0,
-  NAIL_ACTIVE: 0.12, NAIL_COOLDOWN: 0.20, NAIL_W: 64, NAIL_H: 50, NAIL_REACH: 6, NAIL_MULT: 1.0,
+  POGO_ACTIVE: 0.22, POGO_COOLDOWN: 0.06, POGO_W: 76, POGO_H: 52, POGO_REACH: 6, POGO_MULT: 1.2,
+  UPATK_ACTIVE: 0.16, UPATK_COOLDOWN: 0.18, UPATK_W: 62, UPATK_H: 48, UPATK_REACH: 4, UPATK_MULT: 1.0,
+  NAIL_ACTIVE: 0.12, NAIL_COOLDOWN: 0.20, NAIL_W: 56, NAIL_H: 44, NAIL_REACH: 6, NAIL_MULT: 1.0,
 
   // --- HP（ハート・1/4刻み）---
   HEARTS_MAX: 3, HEARTS_CAP: 10, QPH: 4,   // 器(ハート)の進行上限=10。これ超は将来スキル分(落下ペナには非反映)
@@ -154,6 +154,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyN') damage(99, 0);  // デバッグ：即HP0
   if (e.code === 'KeyG') player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK);  // デバッグ：鍵+1
   if (e.code === 'KeyH') { inHideout = true; hideoutCursor = 1; }                    // デバッグ：横穴を直接開く(鍵/しがみつき不要)
+  if (e.code === 'KeyL') { const st = [1, 1.2, 1.5, 2]; slashReach = st[(st.indexOf(slashReach) + 1) % st.length]; }   // デバッグ：斬撃の射程倍率を巡回(1→1.2→1.5→2)
   if (e.code === 'KeyE' && player.state === 'cling' && player.keys > 0) { player.keys--; inHideout = true; hideoutCursor = 1; saveMeta(); }  // 横穴へ
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -167,7 +168,8 @@ const SPRITE_KEYS = ['idle','run','cling','jump','fall','atk','pogo','up'].flatM
 const sprites = {};
 SPRITE_KEYS.forEach(s => { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/${s}.png?v=${SPRITE_VER}`; sprites[s] = img; });
 // 斬撃エフェクト：5コマのモーフ(細→開く→ピーク→細る→分裂)を「上から下へクリップで伸ばしながら」出す＝立体感＋軌道描き
-const SLASH_FRAMES = 5, SLASH_H = 150, SLASH_OFF = 46;    // OFF=狙い方向への前出し量
+const SLASH_FRAMES = 5, SLASH_H = 120, SLASH_OFF = 40;    // OFF=狙い方向への前出し量
+let slashReach = 1;   // 射程倍率：攻撃方向(ローカルx)へ見た目も当たり判定も伸ばす。1=基準。Longnail等の射程UP時に上げるだけ(再生成不要)
 const slashImgs = [];
 for (let i = 0; i < SLASH_FRAMES; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/fx/slash_${i}.png?v=${SPRITE_VER}`; slashImgs.push(img); }
 
@@ -256,9 +258,10 @@ function spawnBand(y, idx) {
 }
 
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => Math.abs(ax - bx) * 2 < aw + bw && Math.abs(ay - by) * 2 < ah + bh;
-const pogoBox = () => ({ x: player.x, y: player.y + player.h / 2 + CONFIG.POGO_REACH + CONFIG.POGO_H / 2, w: CONFIG.POGO_W, h: CONFIG.POGO_H });
-const upBox = () => ({ x: player.x, y: player.y - player.h / 2 - CONFIG.UPATK_REACH - CONFIG.UPATK_H / 2, w: CONFIG.UPATK_W, h: CONFIG.UPATK_H });
-const nailBox = () => ({ x: player.x + player.facing * (player.w / 2 + CONFIG.NAIL_REACH + CONFIG.NAIL_W / 2), y: player.y, w: CONFIG.NAIL_W, h: CONFIG.NAIL_H });
+// 当たり判定も slashReach で攻撃方向に伸縮(下/上=縦H、前=横W)＝見た目と一致
+const pogoBox = () => { const h = CONFIG.POGO_H * slashReach; return { x: player.x, y: player.y + player.h / 2 + CONFIG.POGO_REACH + h / 2, w: CONFIG.POGO_W, h }; };
+const upBox = () => { const h = CONFIG.UPATK_H * slashReach; return { x: player.x, y: player.y - player.h / 2 - CONFIG.UPATK_REACH - h / 2, w: CONFIG.UPATK_W, h }; };
+const nailBox = () => { const w = CONFIG.NAIL_W * slashReach; return { x: player.x + player.facing * (player.w / 2 + CONFIG.NAIL_REACH + w / 2), y: player.y, w, h: CONFIG.NAIL_H }; };
 
 function update(dt) {
   if (inHideout) return;   // 横穴中はクライム停止
@@ -435,7 +438,7 @@ function drawSlash(cx, cy, prog, mode) {
   const fi = Math.min(SLASH_FRAMES - 1, Math.max(0, Math.floor(prog * SLASH_FRAMES)));
   const img = slashImgs[fi];
   if (!img || !img.ok) return;
-  const dh = SLASH_H, dw = dh * (img.width / img.height);
+  const dh = SLASH_H, dw = dh * (img.width / img.height) * slashReach;   // slashReach=射程倍率(攻撃方向へ伸ばす)
   const r = Math.min(1, prog / 0.30);                                   // 序盤で一気に上から描き切る(その後は全部表示=切れて見えない)
   const a = prog < 0.78 ? 1 : Math.max(0, 1 - (prog - 0.78) / 0.22);    // 出切った弧をしっかり見せてから後半フェード
   ctx.save();
@@ -481,7 +484,7 @@ function render() {
   if (inHideout) drawHideout();
   else if (skillMod()) drawSkillRadial();
   if (paused) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('PAUSE (P)', W / 2, H / 2); ctx.textAlign = 'left'; }
-  if (invincible || autoRise) { ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'right'; ctx.fillText('DEBUG ' + (invincible ? '∞無敵(I) ' : '') + (autoRise ? '↑上昇(O)' : ''), W - 8, H - 10); ctx.textAlign = 'left'; }
+  if (invincible || autoRise || slashReach !== 1) { ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'right'; ctx.fillText('DEBUG ' + (invincible ? '∞無敵(I) ' : '') + (autoRise ? '↑上昇(O) ' : '') + (slashReach !== 1 ? '射程x' + slashReach + '(L)' : ''), W - 8, H - 10); ctx.textAlign = 'left'; }
 }
 function drawHUD() {
   ctx.textAlign = 'left';
