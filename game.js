@@ -51,7 +51,7 @@ const CONFIG = {
   CRAWL_VX: 64, CRAWL_FRAME_T: 0.12, CRAWL_RANGE: 120, CRAWL_DRAW_H: 54,   // 這う者：壁沿い速度/コマ間隔/上下パトロール範囲/描画高
   DEATH_POP: -240, DEATH_GRAV: 950,   // 死体：少し跳ねてから回転落下→画面外で削除
   HP_TURRET: 3, TURRET_FIRE_CD: 2.2, TURRET_PROJ_V: 150, TURRET_ATK_POSE: 0.3, TURRET_PULSE_T: 0.45, TURRET_DRAW_H: 58,   // 砲台：HP/発射間隔/弾速(遅)/解放表示尺/鼓動間隔/描画高
-  HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 62, DMG_ASSASSIN: 1, ASN_BOOM_H: 74, ASN_BOOM_OFF: 44,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高/接触ダメ/ブーム高/前出し
+  HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 74, DMG_ASSASSIN: 1, ASN_BOOM_H: 88, ASN_BOOM_OFF: 50,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高(1.2倍)/接触ダメ/ブーム高/前出し
   HP_ROCK: 3, ROCK_DRIFT_X: 34, ROCK_DRIFT_SPD: 0.7, ROCK_PULSE: 0.09, ROCK_PULSE_SPD: 3.0, ROCK_TELE: 1.5, ROCK_TRIGGER_X: 80, ROCK_DROP_GRAV: 1500, ROCK_DRAW_H: 56, DMG_ROCK: 1,   // 紫の岩：HP/漂い幅/漂い速/鼓動量/鼓動速/ため尺/発動横範囲/落下重力/描画高/接触ダメ
   // --- 敵→自分 ダメージ（1/4ハート単位）---
   DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 1, DMG_ATTACKER: 1, DMG_PROJECTILE: 1,
@@ -284,7 +284,7 @@ function makeEnemy(type, x, y) {
   if (type === 'floater')  return { ...base, w: 40, h: 40, hp: CONFIG.HP_FLOATER };
   if (type === 'crawler')  return { ...base, w: 40, h: 38, hp: CONFIG.HP_CRAWLER, side: x < (wallL(y) + wallR(y)) / 2 ? -1 : 1, dir: Math.random() < 0.5 ? 1 : -1, anim: Math.random() };   // side=壁(-1左/+1右), dir=上下(-1上/+1下)
   if (type === 'turret')   return { ...base, w: 46, h: 46, hp: CONFIG.HP_TURRET, side: x < (wallL(y) + wallR(y)) / 2 ? -1 : 1, anim: Math.random(), windup: 0, atkPose: 0, fireCd: CONFIG.TURRET_FIRE_CD * (0.4 + Math.random() * 0.6) };
-  if (type === 'assassin') { const s = x < (wallL(y) + wallR(y)) / 2 ? -1 : 1; return { ...base, w: 38, h: 44, hp: CONFIG.HP_ASSASSIN, side: s, leapDir: -s, state: 'cling', t: CONFIG.ASN_CD * (0.4 + Math.random() * 0.8), anim: 0 }; }   // side=壁, leapDir=跳ぶ向き(反対壁=主人公側)
+  if (type === 'assassin') { const s = x < (wallL(y) + wallR(y)) / 2 ? -1 : 1; return { ...base, w: 46, h: 53, hp: CONFIG.HP_ASSASSIN, side: s, leapDir: -s, state: 'cling', t: CONFIG.ASN_CD * (0.4 + Math.random() * 0.8), anim: 0 }; }   // side=壁, leapDir=跳ぶ向き(反対壁=主人公側)
   if (type === 'rock')     return { ...base, w: 44, h: 44, hp: CONFIG.HP_ROCK, state: 'float', t: 0, vy: 0 };   // float→tele(赤点滅1.5s)→drop(落下)
   if (type === 'boss')     return { ...base, w: CONFIG.BOSS_W, h: CONFIG.BOSS_H, hp: CONFIG.BOSS_HP, hpMax: CONFIG.BOSS_HP, windup: 0, atkCd: CONFIG.BOSS_ATK_CD, mode: 0 };
   return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER, windup: 0 };
@@ -416,7 +416,7 @@ function update(dt) {
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
-    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); } }
+    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
   if (p.nailTimer > 0) p.nailHitThisSwing = true;
