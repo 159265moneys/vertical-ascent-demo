@@ -12,10 +12,10 @@ const CONFIG = {
 
   GRAVITY: 2600,
   MAX_FALL: 1500,
-  AIR_ACCEL: 2600, MAX_AIR_X: 400, AIR_FRICTION: 1500,
+  AIR_ACCEL: 2600, MAX_AIR_X: 340, AIR_FRICTION: 1500,
 
-  WALLKICK_VX: 520, WALLKICK_VY: -1020,
-  GROUND_JUMP_VY: -1040,
+  WALLKICK_VX: 520, WALLKICK_VY: -1320,
+  GROUND_JUMP_VY: -1320,
   COYOTE: 0.09, JUMP_BUFFER: 0.10,
   CLING_GRIP_TIME: 3.0,
   CLING_SLIDE_MAX: 300, CLING_SLIDE_ACCEL: 350,
@@ -434,7 +434,9 @@ function update(dt) {
       }
       if (pr.x < wallL(pr.y) || pr.x > wallR(pr.y)) pr.alive = false;
     } else {
-      if (overlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.r * 2, pr.r * 2)) { damage(CONFIG.DMG_PROJECTILE, -360); pr.alive = false; }
+      let parried = false;
+      if (p.upTimer > 0) { const u = upBox(); if (overlap(u.x, u.y, u.w, u.h, pr.x, pr.y, pr.r * 2, pr.r * 2)) { pr.alive = false; parried = true; spawnSparks(pr.x, pr.y); shake = Math.max(shake, 3); } }   // 上攻撃＝弾をパリィ(打ち消し)。跳ね返しは将来チャームで
+      if (!parried && overlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.r * 2, pr.r * 2)) { damage(CONFIG.DMG_PROJECTILE, -360); pr.alive = false; }
       if (pr.x < wallL(pr.y) - 20 || pr.x > wallR(pr.y) + 20) pr.alive = false;
     }
     if (pr.y > cameraY + H + 80 || pr.y < cameraY - 120) pr.alive = false;
