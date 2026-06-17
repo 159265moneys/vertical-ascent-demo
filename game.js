@@ -48,7 +48,8 @@ const CONFIG = {
 
   // --- 敵HP（ATK_BASE基準＝何発で倒れるか）---
   HP_TARGET: 2, HP_OBSTACLE: 3, HP_FLOATER: 3, HP_ATTACKER: 4, HP_CRAWLER: 2,
-  CRAWL_VX: 72, CRAWL_FRAME_T: 0.12, CRAWL_DEATH_T: 1.5, CRAWL_DRAW_H: 54,   // 這う者：水平速度/コマ間隔/死亡演出尺/描画高
+  CRAWL_VX: 64, CRAWL_FRAME_T: 0.12, CRAWL_RANGE: 120, CRAWL_DRAW_H: 54,   // 這う者：壁沿い速度/コマ間隔/上下パトロール範囲/描画高
+  DEATH_POP: -240, DEATH_GRAV: 950,   // 死体：少し跳ねてから回転落下→画面外で削除
   HP_TURRET: 3, TURRET_FIRE_CD: 2.2, TURRET_PROJ_V: 150, TURRET_ATK_POSE: 0.3, TURRET_PULSE_T: 0.45, TURRET_DRAW_H: 58,   // 砲台：HP/発射間隔/弾速(遅)/解放表示尺/鼓動間隔/描画高
   // --- 敵→自分 ダメージ（1/4ハート単位）---
   DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 1, DMG_ATTACKER: 1, DMG_PROJECTILE: 1,
@@ -234,7 +235,7 @@ function damage(q, knockY) {
 }
 
 function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
-function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; hitStop = Math.max(hitStop, 0.045); shake = Math.max(shake, 5); spawnSparks(e.x, e.y); if (e.hp <= 0 && e.alive && !e.dying) { if (e.type === 'crawler' || e.type === 'turret') { e.dying = true; e.dyingT = 0; } else e.alive = false;
+function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; hitStop = Math.max(hitStop, 0.045); shake = Math.max(shake, 5); spawnSparks(e.x, e.y); if (e.hp <= 0 && e.alive && !e.dead) { if (e.type === 'boss') e.alive = false; else { e.dead = true; e.vy = CONFIG.DEATH_POP; e.vx = (Math.random() - 0.5) * 140; e.rotV = (Math.random() - 0.5) * 11; e.rot = 0; }
   if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
   else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
 
@@ -255,8 +256,8 @@ function makeEnemy(type, x, y) {
   if (type === 'target')   return { ...base, w: 48, h: 22, hp: CONFIG.HP_TARGET };
   if (type === 'obstacle') return { ...base, w: 42, h: 42, hp: CONFIG.HP_OBSTACLE };
   if (type === 'floater')  return { ...base, w: 40, h: 40, hp: CONFIG.HP_FLOATER };
-  if (type === 'crawler')  return { ...base, w: 44, h: 34, hp: CONFIG.HP_CRAWLER, dir: Math.random() < 0.5 ? 1 : -1, anim: Math.random(), dying: false, dyingT: 0 };
-  if (type === 'turret')   return { ...base, w: 46, h: 46, hp: CONFIG.HP_TURRET, side: x < (wallL(y) + wallR(y)) / 2 ? -1 : 1, anim: Math.random(), windup: 0, atkPose: 0, fireCd: CONFIG.TURRET_FIRE_CD * (0.4 + Math.random() * 0.6), dying: false, dyingT: 0 };
+  if (type === 'crawler')  return { ...base, w: 40, h: 38, hp: CONFIG.HP_CRAWLER, side: x < (wallL(y) + wallR(y)) / 2 ? -1 : 1, dir: Math.random() < 0.5 ? 1 : -1, anim: Math.random() };   // side=壁(-1左/+1右), dir=上下(-1上/+1下)
+  if (type === 'turret')   return { ...base, w: 46, h: 46, hp: CONFIG.HP_TURRET, side: x < (wallL(y) + wallR(y)) / 2 ? -1 : 1, anim: Math.random(), windup: 0, atkPose: 0, fireCd: CONFIG.TURRET_FIRE_CD * (0.4 + Math.random() * 0.6) };
   if (type === 'boss')     return { ...base, w: CONFIG.BOSS_W, h: CONFIG.BOSS_H, hp: CONFIG.BOSS_HP, hpMax: CONFIG.BOSS_HP, windup: 0, atkCd: CONFIG.BOSS_ATK_CD, mode: 0 };
   return { ...base, w: 44, h: 44, hp: CONFIG.HP_ATTACKER, windup: 0 };
 }
@@ -345,13 +346,13 @@ function update(dt) {
   const pg = pogoBox(), ub = upBox(), nb = nailBox();
   for (const e of enemies) {
     if (!e.alive) continue;
-    if (e.dying) { e.dyingT += dt; if (e.dyingT >= CONFIG.CRAWL_DEATH_T) e.alive = false; continue; }   // 死亡演出中＝移動/接触なし→尺経過で消滅
+    if (e.dead) { e.vy += CONFIG.DEATH_GRAV * dt; e.x += e.vx * dt; e.y += e.vy * dt; e.rot += e.rotV * dt; if (e.y > cameraY + H + 140) e.alive = false; continue; }   // 死体＝回転しながら落下→画面外で削除
     if (e.y > cameraY + H + 80) continue;   // 画面下へ去った生存敵＝凍結保持（スルー敵は座標に残り、降りれば再会／倒すまで消えない）
     if (e.flash > 0) e.flash -= dt;
     if (e.type === 'target') e.y += CONFIG.FALLER_VY * dt;
     else if (e.type === 'obstacle') e.y += CONFIG.OBSTACLE_VY * dt;
     else if (e.type === 'floater') { e.phase += dt * CONFIG.FLOAT_SPEED; e.x = e.baseX + Math.sin(e.phase) * CONFIG.FLOAT_DRIFT_X; e.y = e.baseY + Math.cos(e.phase * 0.8) * CONFIG.FLOAT_DRIFT_Y; }
-    else if (e.type === 'crawler') { e.anim += dt; e.x += e.dir * CONFIG.CRAWL_VX * dt; const wl = wallL(e.y) + e.w / 2, wr = wallR(e.y) - e.w / 2; if (e.x <= wl) { e.x = wl; e.dir = 1; } else if (e.x >= wr) { e.x = wr; e.dir = -1; } }   // 壁で折り返す水平パトロール
+    else if (e.type === 'crawler') { e.anim += dt; e.y += e.dir * CONFIG.CRAWL_VX * dt; if (e.y < e.baseY - CONFIG.CRAWL_RANGE) e.dir = 1; else if (e.y > e.baseY + CONFIG.CRAWL_RANGE) e.dir = -1; e.x = e.side > 0 ? wallR(e.y) - e.w / 2 : wallL(e.y) + e.w / 2; }   // 壁に張り付き上下パトロール
     else if (e.type === 'turret') { e.anim += dt; e.x = e.side > 0 ? wallR(e.y) - e.w / 2 : wallL(e.y) + e.w / 2; if (e.atkPose > 0) e.atkPose -= dt; if (e.y > cameraY - 40 && e.y < cameraY + H + 40) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { fireAt(e, CONFIG.TURRET_PROJ_V); e.fireCd = CONFIG.TURRET_FIRE_CD; e.atkPose = CONFIG.TURRET_ATK_POSE; } } else { e.fireCd -= dt; if (e.fireCd <= 0) e.windup = CONFIG.TELEGRAPH_LEAD; } } }   // 壁固定砲台：ため→遅い弾→解放
     else if (e.type === 'boss') {
       e.phase += dt * CONFIG.BOSS_PHASE_SPD;
@@ -421,31 +422,33 @@ function drawWalls(bio) {
 }
 function drawEnemy(e) {
   const y = sy(e.y), x = e.x, flash = e.flash > 0;
+  if (e.dead) {   // 死体：死亡コマを回転させながら落下
+    ctx.save(); ctx.translate(x, y); ctx.rotate(e.rot || 0);
+    const corpse = e.type === 'crawler' ? e01r[4] : e.type === 'turret' ? e06[6] : null;
+    if (corpse && corpse.ok) { const dh = e.type === 'turret' ? CONFIG.TURRET_DRAW_H : CONFIG.CRAWL_DRAW_H, dw = dh * corpse.width / corpse.height; ctx.drawImage(corpse, -dw / 2, -dh / 2, dw, dh); }
+    else { ctx.fillStyle = '#6b7280'; roundRect(-e.w / 2, -e.h / 2, e.w, e.h, 6); ctx.fill(); }   // コード敵の死体(灰箱)
+    ctx.restore(); return;
+  }
   if (e.type === 'target') { ctx.fillStyle = flash ? '#fff' : '#27ae60'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 5); ctx.fill(); ctx.fillStyle = '#9be8bd'; ctx.beginPath(); ctx.moveTo(x - 6, y - 2); ctx.lineTo(x + 6, y - 2); ctx.lineTo(x, y + 5); ctx.fill(); return; }
   if (e.type === 'obstacle') { ctx.fillStyle = flash ? '#fff' : '#c0392b'; const s = e.w / 2; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill(); return; }
   if (e.type === 'floater') { ctx.fillStyle = flash ? '#fff' : '#16a2b8'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); ctx.strokeStyle = '#0d6f7e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, e.w / 2 - 5, 0, 6.2832); ctx.stroke(); return; }
   if (e.type === 'crawler') {
-    const frames = e.dir > 0 ? e01r : e01l;
-    let idx = 0, a = 1;
-    if (e.dying) {
-      if (e.dyingT < CONFIG.CRAWL_DEATH_T * 0.33) idx = 4;                                   // 崩れ
-      else { idx = 5; a = Math.max(0, 1 - (e.dyingT - CONFIG.CRAWL_DEATH_T * 0.33) / (CONFIG.CRAWL_DEATH_T * 0.67)); }   // 溶け＋フェード
-    } else idx = Math.floor(e.anim / CONFIG.CRAWL_FRAME_T) % 4;                              // crawlループ
-    const img = frames[idx];
-    if (img && img.ok) { const dh = CONFIG.CRAWL_DRAW_H, dw = dh * (img.width / img.height); ctx.save(); ctx.globalAlpha = a; ctx.drawImage(img, x - dw / 2, y - dh / 2, dw, dh); ctx.restore(); }
-    else { ctx.fillStyle = flash ? '#fff' : '#d8c8a8'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); }   // 読込前フォールバック
-    return;
+    const img = e01r[Math.floor(e.anim / CONFIG.CRAWL_FRAME_T) % 4];   // crawl4コマループ
+    ctx.save(); ctx.translate(x, y); ctx.rotate(e.side > 0 ? -Math.PI / 2 : Math.PI / 2);   // 脚を壁へ向ける＝壁に張り付く
+    if (img && img.ok) { const dh = CONFIG.CRAWL_DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); }
+    else { ctx.fillStyle = flash ? '#fff' : '#d8c8a8'; ctx.beginPath(); ctx.arc(0, 0, e.w / 2, 0, 6.2832); ctx.fill(); }
+    ctx.restore(); return;
   }
   if (e.type === 'turret') {
-    let idx, a = 1;
-    if (e.dying) { if (e.dyingT < CONFIG.CRAWL_DEATH_T * 0.4) idx = 6; else { idx = 7; a = Math.max(0, 1 - (e.dyingT - CONFIG.CRAWL_DEATH_T * 0.4) / (CONFIG.CRAWL_DEATH_T * 0.6)); } }   // 萎れ→枯れ＋フェード
-    else if (e.windup > 0) idx = (1 - e.windup / CONFIG.TELEGRAPH_LEAD) < 0.5 ? 2 : 3;   // ため(触手を内に窄める)
-    else if (e.atkPose > 0) idx = e.atkPose > CONFIG.TURRET_ATK_POSE * 0.5 ? 4 : 5;       // 解放
-    else idx = Math.floor(e.anim / CONFIG.TURRET_PULSE_T) % 2;                            // 鼓動
+    let idx;
+    if (e.windup > 0) idx = (1 - e.windup / CONFIG.TELEGRAPH_LEAD) < 0.5 ? 2 : 3;   // ため(触手を内に窄める)
+    else if (e.atkPose > 0) idx = e.atkPose > CONFIG.TURRET_ATK_POSE * 0.5 ? 4 : 5;  // 解放
+    else idx = Math.floor(e.anim / CONFIG.TURRET_PULSE_T) % 2;                       // 鼓動
     const img = e06[idx];
-    if (img && img.ok) { const dh = CONFIG.TURRET_DRAW_H, dw = dh * (img.width / img.height); ctx.save(); ctx.globalAlpha = a; ctx.drawImage(img, x - dw / 2, y - dh / 2, dw, dh); ctx.restore(); }
-    else { ctx.fillStyle = flash ? '#fff' : '#cdbf9a'; ctx.beginPath(); ctx.arc(x, y, e.w / 2, 0, 6.2832); ctx.fill(); }
-    if (e.windup > 0 && !e.dying) { const t = 1 - e.windup / CONFIG.TELEGRAPH_LEAD; ctx.strokeStyle = `rgba(255,80,80,${0.3 + 0.5 * t})`; ctx.lineWidth = 2 + 3 * t; ctx.beginPath(); ctx.arc(x, y, 22 + 16 * t, 0, 6.2832); ctx.stroke(); }   // ため視認リング
+    ctx.save(); ctx.translate(x, y); ctx.rotate(e.side > 0 ? -Math.PI / 2 : Math.PI / 2);   // 根を壁へ＝壁から生える
+    if (img && img.ok) { const dh = CONFIG.TURRET_DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); }
+    else { ctx.fillStyle = flash ? '#fff' : '#cdbf9a'; ctx.beginPath(); ctx.arc(0, 0, e.w / 2, 0, 6.2832); ctx.fill(); }
+    if (e.windup > 0) { const t = 1 - e.windup / CONFIG.TELEGRAPH_LEAD; ctx.strokeStyle = `rgba(255,80,80,${0.3 + 0.5 * t})`; ctx.lineWidth = 2 + 3 * t; ctx.beginPath(); ctx.arc(0, 0, 22 + 16 * t, 0, 6.2832); ctx.stroke(); }   // ため視認リング
     return;
   }
   if (e.type === 'boss') {
