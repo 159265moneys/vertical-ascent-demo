@@ -194,6 +194,8 @@ const e03all = [];
 for (let i = 1; i <= 16; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/enemies/enemy03_${String(i).padStart(2, '0')}.png?v=${SPRITE_VER}`; e03all.push(img); }
 const e03r = [0, 2, 1, 3, 4, 6, 7].map(i => e03all[i]);    // 右へ跳ぶ(左壁発)：cling/ため/ため/跳/空中/攻撃/着地
 const e03l = [8, 10, 9, 11, 14, 15].map(i => e03all[i]);   // 左へ跳ぶ(右壁発)：cling/ため/ため/跳/空中/着地
+const e03d = [];   // 暗殺者 死亡8コマ(崩れ)。#4(idx3)を死体スプライトに使用
+for (let i = 1; i <= 8; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/enemies/enemy03d_${String(i).padStart(2, '0')}.png?v=${SPRITE_VER}`; e03d.push(img); }
 
 let player, cameraY, maxHeight, enemies, projectiles, platforms, sparks, spawnTopY, bandIndex, bossNextH, hitStop, shake, hp0flash;
 
@@ -451,7 +453,7 @@ function drawEnemy(e) {
   const y = sy(e.y), x = e.x, flash = e.flash > 0;
   if (e.dead) {   // 死体：死亡コマを回転させながら落下
     ctx.save(); ctx.translate(x, y); ctx.rotate(e.rot || 0);
-    const corpse = e.type === 'crawler' ? e01r[4] : e.type === 'turret' ? e06[6] : e.type === 'assassin' ? e03r[0] : null;   // crawler=崩れ/turret=萎れ/assassin=仮idle(死コマ未生成)
+    const corpse = e.type === 'crawler' ? e01r[4] : e.type === 'turret' ? e06[6] : e.type === 'assassin' ? e03d[3] : null;   // crawler=崩れ/turret=萎れ/assassin=死亡#4
     if (corpse && corpse.ok) { const dh = e.type === 'turret' ? CONFIG.TURRET_DRAW_H : CONFIG.CRAWL_DRAW_H, dw = dh * corpse.width / corpse.height; ctx.drawImage(corpse, -dw / 2, -dh / 2, dw, dh); }
     else { ctx.fillStyle = '#6b7280'; roundRect(-e.w / 2, -e.h / 2, e.w, e.h, 6); ctx.fill(); }   // コード敵の死体(灰箱)
     ctx.restore(); return;
