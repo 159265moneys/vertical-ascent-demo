@@ -43,16 +43,17 @@ function drawGhost(frames, cx, cy, t, label) {
   ctx.fillText(label, cx, cy + DRAW_H / 2 + 70);
 }
 
-let t0 = null;
-function frame(ts) {
-  if (t0 === null) t0 = ts;
-  const t = (ts - t0) / 1000;
+const start = Date.now();
+function draw() {
+  const t = (Date.now() - start) / 1000;
   ctx.clearRect(0, 0, cv.width, cv.height);
   drawGhost(A, 200, 210, t, 'A');
   drawGhost(B, 560, 210, t, 'B');
-  requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+setInterval(draw, 33);   // rAFは非アクティブで止まるのでsetIntervalで確実に回す
+draw();
+// 画像が遅れて来ても確実に出るよう、各画像ロード時にも再描画
+[...A, ...B, orb].forEach(img => img.addEventListener('load', draw));
 </script>
 </body>
 </html>
