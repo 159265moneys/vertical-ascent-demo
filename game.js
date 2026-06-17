@@ -433,13 +433,14 @@ function drawSlash(cx, cy, dir, prog) {
   const S = 1.32, e0 = dir - S, e1 = dir + S;
   const top = Math.sin(e0) <= Math.sin(e1) ? e0 : e1, bot = (top === e0) ? e1 : e0;   // 上側の端を起点に
   const a0 = top + (bot - top) * tail, a1 = top + (bot - top) * head;
-  const R = 50, thick = 12, N = 18;                     // 細いブーメラン形
-  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const R = 50, thick = 13, N = 18;                     // 細いブーメラン形
+  ctx.save();
   ctx.beginPath();
   for (let i = 0; i <= N; i++) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R + t / 2; const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
   for (let i = N; i >= 0; i--) { const s = i / N, a = a0 + (a1 - a0) * s, t = thick * Math.sin(Math.PI * s), r = R - t / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
   ctx.closePath();
-  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.fill();                                   // フラット白塗り(発光なし)
+  ctx.lineJoin = 'round'; ctx.lineWidth = 3.5; ctx.strokeStyle = '#241a16'; ctx.stroke();   // キャラと同じ濃い黒輪郭=タッチ統一
   ctx.restore();
 }
 function drawPlayer() {
