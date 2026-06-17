@@ -51,7 +51,7 @@ const CONFIG = {
   CRAWL_VX: 64, CRAWL_FRAME_T: 0.12, CRAWL_RANGE: 120, CRAWL_DRAW_H: 54,   // 這う者：壁沿い速度/コマ間隔/上下パトロール範囲/描画高
   DEATH_POP: -240, DEATH_GRAV: 950,   // 死体：少し跳ねてから回転落下→画面外で削除
   HP_TURRET: 3, TURRET_FIRE_CD: 2.2, TURRET_PROJ_V: 150, TURRET_ATK_POSE: 0.3, TURRET_PULSE_T: 0.45, TURRET_DRAW_H: 58,   // 砲台：HP/発射間隔/弾速(遅)/解放表示尺/鼓動間隔/描画高
-  HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 62, DMG_ASSASSIN: 1,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高/接触ダメ
+  HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 62, DMG_ASSASSIN: 1, ASN_BOOM_H: 74, ASN_BOOM_OFF: 44,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高/接触ダメ/ブーム高/前出し
   // --- 敵→自分 ダメージ（1/4ハート単位）---
   DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 1, DMG_ATTACKER: 1, DMG_PROJECTILE: 1,
   // --- ドロップ（撃破報酬・恒久層へ）＋テレグラフ ---
@@ -176,6 +176,9 @@ const SLASH_FRAMES = 5, SLASH_H = 120, SLASH_OFF = 40;    // OFF=狙い方向へ
 let slashReach = 1;   // 射程倍率：攻撃方向(ローカルx)へ見た目も当たり判定も伸ばす。1=基準。Longnail等の射程UP時に上げるだけ(再生成不要)
 const slashImgs = [];
 for (let i = 0; i < SLASH_FRAMES; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/fx/slash_${i}.png?v=${SPRITE_VER}`; slashImgs.push(img); }
+// 暗殺者の突撃斬撃：ソニックブーム5コマ(小→ピーク→減衰)。跳躍の進行で送る
+const boomImgs = [];
+for (let i = 1; i <= 5; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/fx/boom_${String(i).padStart(2, '0')}.png?v=${SPRITE_VER}`; boomImgs.push(img); }
 // 敵スプライト：enemy_01(這う者)=6コマ(crawl1-4 / 崩れ5 / 溶け6)×左右。dir>0で右(_r)
 const e01r = [], e01l = [];
 for (let i = 1; i <= 6; i++) {
@@ -485,6 +488,7 @@ function drawEnemy(e) {
     const img = set[idx];
     if (img && img.ok) { const dh = CONFIG.ASN_DRAW_H, dw = dh * (img.width / img.height); ctx.drawImage(img, x - dw / 2, y - dh / 2, dw, dh); }
     else { ctx.fillStyle = flash ? '#fff' : '#8a4a4a'; roundRect(x - e.w / 2, y - e.h / 2, e.w, e.h, 6); ctx.fill(); }
+    if (e.state === 'leap') { const k = 1 - e.t / CONFIG.ASN_LEAP; const bimg = boomImgs[Math.min(4, Math.floor(k * 5))]; if (bimg && bimg.ok) { const bh = CONFIG.ASN_BOOM_H, bw = bh * bimg.width / bimg.height; ctx.save(); ctx.translate(x + e.leapDir * CONFIG.ASN_BOOM_OFF, y); if (e.leapDir < 0) ctx.scale(-1, 1); ctx.drawImage(bimg, -bw / 2, -bh / 2, bw, bh); ctx.restore(); } }   // 突撃ソニックブーム：先端の少し先・進行でコマ送り(小→ピーク→減衰)
     if (e.state === 'windup') { const t = 1 - e.t / CONFIG.ASN_WINDUP; ctx.strokeStyle = `rgba(255,80,80,${0.3 + 0.5 * t})`; ctx.lineWidth = 2 + 3 * t; ctx.beginPath(); ctx.arc(x, y, 24 + 14 * t, 0, 6.2832); ctx.stroke(); }   // ため視認リング
     return;
   }
