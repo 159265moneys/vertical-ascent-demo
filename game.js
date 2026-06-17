@@ -346,7 +346,7 @@ function update(dt) {
   const pg = pogoBox(), ub = upBox(), nb = nailBox();
   for (const e of enemies) {
     if (!e.alive) continue;
-    if (e.dead) { e.vy += CONFIG.DEATH_GRAV * dt; e.x += e.vx * dt; e.y += e.vy * dt; e.rot += e.rotV * dt; if (e.y > cameraY + H + 140) e.alive = false; continue; }   // 死体＝回転しながら落下→画面外で削除
+    if (e.dead) { e.vy += CONFIG.DEATH_GRAV * dt; e.x += e.vx * dt; e.y += e.vy * dt; e.rot += e.rotV * dt; const dwl = wallL(e.y) + e.w / 2, dwr = wallR(e.y) - e.w / 2; if (e.x < dwl) { e.x = dwl; e.vx = Math.abs(e.vx) * 0.5; } else if (e.x > dwr) { e.x = dwr; e.vx = -Math.abs(e.vx) * 0.5; } if (e.y > cameraY + H + 140) e.alive = false; continue; }   // 死体＝回転落下。壁は絶対境界=越えずバウンド→画面外で削除
     if (e.y > cameraY + H + 80) continue;   // 画面下へ去った生存敵＝凍結保持（スルー敵は座標に残り、降りれば再会／倒すまで消えない）
     if (e.flash > 0) e.flash -= dt;
     if (e.type === 'target') e.y += CONFIG.FALLER_VY * dt;
@@ -362,6 +362,7 @@ function update(dt) {
     }
     else { e.phase += dt * CONFIG.FLOAT_SPEED * 0.6; e.x = e.baseX + Math.sin(e.phase) * CONFIG.ATTACKER_DRIFT_X; const onScr = e.y > cameraY - 40 && e.y < cameraY + H + 40; if (onScr) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { fireAt(e); e.fireCd = CONFIG.ATTACKER_FIRE_CD; } } else { e.fireCd -= dt; if (e.fireCd <= 0) e.windup = CONFIG.TELEGRAPH_LEAD; } } }
 
+    { const cwl = wallL(e.y) + e.w / 2, cwr = wallR(e.y) - e.w / 2; if (cwl < cwr) e.x = Math.max(cwl, Math.min(cwr, e.x)); }   // 壁=絶対境界：全敵を壁内にクランプ(落下/ドリフトでも越えさせない)
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
