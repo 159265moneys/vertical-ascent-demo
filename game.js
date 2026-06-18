@@ -101,6 +101,7 @@ const CHARMS = [
   { id: 'def', name: '防御', notch: 1, gold: 22 },
   { id: 'kaishin', name: '会心', notch: 1, gold: 28 },
   { id: 'kiba', name: '牙突', notch: 2, gold: 32 },
+  { id: 'grip', name: '吸着(無入力しがみつき)', notch: 2, gold: 26 },
 ];
 const hasCharm = id => meta.equippedCharms.includes(id);
 const notchUsed = () => meta.equippedCharms.reduce((s, id) => s + ((CHARMS.find(c => c.id === id) || { notch: 0 }).notch), 0);
@@ -239,12 +240,13 @@ function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta))
 let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, apShards: 0, heartsBonus: 0, apBonus: 0,
-  unlocked: ['dash', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'dash', S: 'spin', D: 'homura' },
+  unlocked: ['dash', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'dash', A: 'mayu', S: 'spin', D: 'homura' },
   ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
 if (!meta.unlocked.includes('dash')) meta.unlocked.push('dash');                                  // 突撃は既存セーブにも解放
 meta.unlocked = meta.unlocked.filter(id => id !== 'bomb');                                        // ポゴ爆弾は専用ボタンM(チャージ式)へ移行＝枠スキルから除去
 for (const d in meta.slots) if (meta.slots[d] === 'bomb') meta.slots[d] = 'spin';                 // 旧セーブで爆弾が枠に入ってたら戻す
+if (!meta.fixDashW) { for (const d in meta.slots) if (meta.slots[d] === 'dash') meta.slots[d] = 'mayu'; meta.slots.W = 'dash'; meta.fixDashW = true; saveMeta(); }   // ロックオン突撃をW枠へ確実に(既存セーブで枠落ちしてた不具合の修正・1回だけ)
 meta.heartsBonus = Math.min(Math.max(0, meta.heartsBonus | 0), CONFIG.HEARTS_CAP - CONFIG.HEARTS_MAX);   // 器進行を上限(=10器)内にclamp＝旧/不正セーブも自動補正
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
 meta.apBonus = Math.min(Math.max(0, meta.apBonus | 0), CONFIG.AP_CAP - CONFIG.AP_BASE);   // AP器進行を上限(=10)内にclamp
@@ -389,7 +391,7 @@ function update(dt) {
     p.vx = 0; p.lastWall = p.clingWall; p.clingHold += dt; p.airJumps = 0;
     const over = p.clingHold - CONFIG.CLING_GRIP_TIME;
     p.vy = over > 0 ? Math.min(CONFIG.CLING_SLIDE_MAX, over * CONFIG.CLING_SLIDE_ACCEL) : 0;
-    const grip = (p.clingWall < 0 && keys['KeyA']) || (p.clingWall > 0 && keys['KeyD']);   // 生キー＝左Shift(スキル)中でも壁を掴み続ける
+    const grip = (hasCharm('grip') && p.clingHold < CONFIG.CLING_GRIP_TIME) || (p.clingWall < 0 && keys['KeyA']) || (p.clingWall > 0 && keys['KeyD']);   // 生キー＝左Shift(スキル)中でも壁を掴み続ける／吸着チャーム=掴み時間内は無入力で張り付き(止まってスキル可)
     if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; }
     else if (!grip) { p.state = 'air'; p.coyote = CONFIG.COYOTE; p.clingWall = 0; }
   } else {
