@@ -31,16 +31,16 @@ const CONFIG = {
   HEARTS_MAX: 3, HEARTS_CAP: 10, QPH: 4,   // 器(ハート)の進行上限=10。これ超は将来スキル分(落下ペナには非反映)
   FALL_SEC_PER_HEART: 1.0, IFRAME: 0.9,   // T12=時間型：死亡で器(ハート)数×1s落下・上限なし→空中で立て直し+HP全回復(床到達でも復帰)
 
-  // --- MP（共有CT・自動回復）---
-  MP_MAX: 100, MP_REGEN: 30,
+  // --- AP（FF7R風pip制・共有CT）。整数pip：初期2/最大10、時間でゆっくり＋攻撃で速く回復 ---
+  AP_BASE: 2, AP_CAP: 10, AP_REGEN: 0.4, AP_ATTACK_GAIN: 0.34,
 
   // --- スキル②（Ctrl+WASD の4枠）---
-  KENPA_MP: 22, KENPA_MULT: 1.4, KENPA_V: 640, KENPA_CD: 0.22, KENPA_R: 9,          // A：剣波（速い弾）
-  HOMURA_MP: 34, HOMURA_MULT: 1.8, HOMURA_V: 380, HOMURA_CD: 0.5, HOMURA_R: 16, HOMURA_PIERCE: 2, // D：焔（遅い大弾・貫通）
-  SPIN_MP: 30, SPIN_MULT: 1.2, SPIN_R: 96, SPIN_ACTIVE: 0.18, SPIN_CD: 0.40,        // S：回転斬り（周囲AoE）
-  MAYU_MP: 26, MAYU_DUR: 4.0, MAYU_REDUCE: 0.5, MAYU_CD: 6.0,                       // W：守護の繭（被ダメ減）
-  RAIJIN_MP: 28, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
-  TRI_MP: 30, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
+  KENPA_AP: 1, KENPA_MULT: 1.4, KENPA_V: 640, KENPA_CD: 0.22, KENPA_R: 9,          // A：剣波（速い弾・軽）
+  HOMURA_AP: 3, HOMURA_MULT: 1.8, HOMURA_V: 380, HOMURA_CD: 0.5, HOMURA_R: 16, HOMURA_PIERCE: 2, // D：焔（遅い大弾・貫通・重）
+  SPIN_AP: 2, SPIN_MULT: 1.2, SPIN_R: 96, SPIN_ACTIVE: 0.18, SPIN_CD: 0.40,        // S：回転斬り（周囲AoE）
+  MAYU_AP: 2, MAYU_DUR: 4.0, MAYU_REDUCE: 0.5, MAYU_CD: 6.0,                       // W：守護の繭（被ダメ減）
+  RAIJIN_AP: 2, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
+  TRI_AP: 2, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
   UNLOCK_SP: 10,
   // --- チャーム ---
   NOTCH_EXPAND_GOLD: 40, WKICK_BONUS: 1.25, PARA_FALL: 0.5, DEF_REDUCE: 1,
@@ -51,18 +51,18 @@ const CONFIG = {
   CRAWL_VX: 64, CRAWL_FRAME_T: 0.12, CRAWL_RANGE: 120, CRAWL_DRAW_H: 54,   // 這う者：壁沿い速度/コマ間隔/上下パトロール範囲/描画高
   DEATH_POP: -240, DEATH_GRAV: 950,   // 死体：少し跳ねてから回転落下→画面外で削除
   HP_TURRET: 3, TURRET_FIRE_CD: 2.2, TURRET_PROJ_V: 150, TURRET_ATK_POSE: 0.3, TURRET_PULSE_T: 0.45, TURRET_DRAW_H: 58,   // 砲台：HP/発射間隔/弾速(遅)/解放表示尺/鼓動間隔/描画高
-  HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 74, DMG_ASSASSIN: 1, ASN_BOOM_H: 88, ASN_BOOM_OFF: 50,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高(1.2倍)/接触ダメ/ブーム高/前出し
-  HP_ROCK: 3, ROCK_DRIFT_X: 34, ROCK_DRIFT_SPD: 0.7, ROCK_PULSE: 0.09, ROCK_PULSE_SPD: 3.0, ROCK_TELE: 1.5, ROCK_TRIGGER_X: 80, ROCK_DROP_GRAV: 1500, ROCK_DRAW_H: 56, DMG_ROCK: 1,   // 紫の岩：HP/漂い幅/漂い速/鼓動量/鼓動速/ため尺/発動横範囲/落下重力/描画高/接触ダメ
-  HP_GHOST: 3, GHOST_CHASE: 46, GHOST_FRAME_T: 0.26, GHOST_DRAW_H: 80, GHOST_ORBIT_SPD: 1.0, GHOST_ORBIT_R: 56, GHOST_ORB_H: 22, GHOST_ORB_PULSE: 0.38, GHOST_ORB_HITR: 11, DMG_GHOST: 1, GHOST_DEATH_T: 0.55,   // 毒ゴースト：HP/追尾速/浮遊コマ間隔(遅め)/描画高(大)/回転速(遅)/軌道半径/球サイズ/球大小幅/球当たり半径/接触ダメ/死亡尺
+  HP_ASSASSIN: 4, ASN_WINDUP: 0.45, ASN_LEAP: 0.5, ASN_LAND: 0.3, ASN_CD: 1.6, ASN_DRAW_H: 74, DMG_ASSASSIN: 2, ASN_BOOM_H: 88, ASN_BOOM_OFF: 50,   // 暗殺者：HP/ため/跳躍/着地/CD/描画高(1.2倍)/接触ダメ/ブーム高/前出し
+  HP_ROCK: 3, ROCK_DRIFT_X: 34, ROCK_DRIFT_SPD: 0.7, ROCK_PULSE: 0.09, ROCK_PULSE_SPD: 3.0, ROCK_TELE: 1.5, ROCK_TRIGGER_X: 80, ROCK_DROP_GRAV: 1500, ROCK_DRAW_H: 56, DMG_ROCK: 2,   // 紫の岩：HP/漂い幅/漂い速/鼓動量/鼓動速/ため尺/発動横範囲/落下重力/描画高/接触ダメ
+  HP_GHOST: 3, GHOST_CHASE: 46, GHOST_FRAME_T: 0.26, GHOST_DRAW_H: 80, GHOST_ORBIT_SPD: 1.0, GHOST_ORBIT_R: 56, GHOST_ORB_H: 22, GHOST_ORB_PULSE: 0.38, GHOST_ORB_HITR: 11, DMG_GHOST: 2, GHOST_DEATH_T: 0.55,   // 毒ゴースト：HP/追尾速/浮遊コマ間隔(遅め)/描画高(大)/回転速(遅)/軌道半径/球サイズ/球大小幅/球当たり半径/接触ダメ/死亡尺
   // --- 敵→自分 ダメージ（1/4ハート単位）---
-  DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 1, DMG_ATTACKER: 1, DMG_PROJECTILE: 1,
+  DMG_TARGET: 0, DMG_OBSTACLE: 2, DMG_FLOATER: 2, DMG_ATTACKER: 2, DMG_PROJECTILE: 2, DMG_CRAWLER: 1,   // 接触ダメ(1/4=1単位)：這う者=1/4、それ以外=1/2。数値はのちのち調整
   // --- ドロップ（撃破報酬・恒久層へ）＋テレグラフ ---
   GOLD: { target: 1, obstacle: 2, floater: 2, attacker: 4, crawler: 1, turret: 2, assassin: 3, rock: 2, ghost: 2 },
   SP: { target: 1, obstacle: 1, floater: 1, attacker: 2, crawler: 1, turret: 2, assassin: 2, rock: 1, ghost: 2 },
   TELEGRAPH_LEAD: 0.5,
   // --- 横穴ハブ（鍵・器）---
   KEY_PER_KILLS: 6, KEY_STOCK: 2,
-  HEART_SHARD_GOLD: 12, MP_SHARD_SP: 8, MP_PER_VESSEL: 30,   // カケラ4個で器1個
+  HEART_SHARD_GOLD: 12, AP_SHARD_SP: 8,   // カケラ4個で器1個(HP=◆/AP=SP)。AP器は+1/個
 
   FALLER_VY: 135, OBSTACLE_VY: 210, FLOAT_SPEED: 2.2, FLOAT_DRIFT_X: 48, FLOAT_DRIFT_Y: 26,
   ATTACKER_DRIFT_X: 30, ATTACKER_FIRE_CD: 1.9, PROJECTILE_V: 270,
@@ -79,12 +79,12 @@ const CONFIG = {
 
 // スキルレジストリ（id → 表示名 / MP CONFIGキー / CTフィールド / CT最大CONFIGキー）。割当は meta.slots（横穴で変更）
 const SKILL_META = {
-  mayu: { name: '守護の繭', mp: 'MAYU_MP', cd: 'mayuCd', cdMax: 'MAYU_CD' },
-  kenpa: { name: '剣波', mp: 'KENPA_MP', cd: 'kenpaCd', cdMax: 'KENPA_CD' },
-  spin: { name: '回転斬り', mp: 'SPIN_MP', cd: 'spinCd', cdMax: 'SPIN_CD' },
-  homura: { name: '焔', mp: 'HOMURA_MP', cd: 'homuraCd', cdMax: 'HOMURA_CD' },
-  raijin: { name: '落雷', mp: 'RAIJIN_MP', cd: 'raijinCd', cdMax: 'RAIJIN_CD' },
-  tri: { name: '三連剣波', mp: 'TRI_MP', cd: 'triCd', cdMax: 'TRI_CD' },
+  mayu: { name: '守護の繭', ap: 'MAYU_AP', cd: 'mayuCd', cdMax: 'MAYU_CD' },
+  kenpa: { name: '剣波', ap: 'KENPA_AP', cd: 'kenpaCd', cdMax: 'KENPA_CD' },
+  spin: { name: '回転斬り', ap: 'SPIN_AP', cd: 'spinCd', cdMax: 'SPIN_CD' },
+  homura: { name: '焔', ap: 'HOMURA_AP', cd: 'homuraCd', cdMax: 'HOMURA_CD' },
+  raijin: { name: '落雷', ap: 'RAIJIN_AP', cd: 'raijinCd', cdMax: 'RAIJIN_CD' },
+  tri: { name: '三連剣波', ap: 'TRI_AP', cd: 'triCd', cdMax: 'TRI_CD' },
 };
 const SKILL_IDS = Object.keys(SKILL_META);
 // チャーム（金で購入・ノッチ枠内で装着）。効果は各所が hasCharm() を参照
@@ -231,13 +231,14 @@ function loadMeta() { try { return JSON.parse(localStorage.getItem(META_KEY)) ||
 function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) {} }
 let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
-  heartShards: 0, mpShards: 0, heartsBonus: 0, mpBonus: 0,
+  heartShards: 0, apShards: 0, heartsBonus: 0, apBonus: 0,
   unlocked: ['mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'kenpa', S: 'spin', D: 'homura' },
   ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
 meta.heartsBonus = Math.min(Math.max(0, meta.heartsBonus | 0), CONFIG.HEARTS_CAP - CONFIG.HEARTS_MAX);   // 器進行を上限(=10器)内にclamp＝旧/不正セーブも自動補正
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
-const maxMP = () => CONFIG.MP_MAX + meta.mpBonus * CONFIG.MP_PER_VESSEL;
+meta.apBonus = Math.min(Math.max(0, meta.apBonus | 0), CONFIG.AP_CAP - CONFIG.AP_BASE);   // AP器進行を上限(=10)内にclamp
+const maxAP = () => CONFIG.AP_BASE + meta.apBonus;   // 最大AP(pip数)。初期2〜最大10
 // 横穴(ベンチ＋店)の状態
 let inHideout = false, hideoutCursor = 1;
 
@@ -249,7 +250,7 @@ function reset() {
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
     spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0,
-    hpQ: maxQ(), mp: maxMP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
+    hpQ: maxQ(), ap: maxAP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
   enemies = []; projectiles = []; platforms = []; sparks = []; hitStop = 0;
@@ -272,19 +273,20 @@ function damage(q, knockY) {
 }
 
 function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
-function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; hitStop = Math.max(hitStop, 0.045); shake = Math.max(shake, 5); spawnSparks(e.x, e.y); if (e.hp <= 0 && e.alive && !e.dead && !e.gdeath) { if (e.type === 'boss') e.alive = false; else if (e.type === 'ghost') { e.gdeath = true; e.gdeathT = 0; } else { e.dead = true; e.vy = CONFIG.DEATH_POP; e.vx = (Math.random() - 0.5) * 140; e.rotV = (Math.random() - 0.5) * 11; e.rot = 0; }
+function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; hitStop = Math.max(hitStop, 0.045); shake = Math.max(shake, 5); spawnSparks(e.x, e.y); player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
+  if (e.hp <= 0 && e.alive && !e.dead && !e.gdeath) { if (e.type === 'boss') e.alive = false; else if (e.type === 'ghost') { e.gdeath = true; e.gdeathT = 0; } else { e.dead = true; e.vy = CONFIG.DEATH_POP; e.vx = (Math.random() - 0.5) * 140; e.rotV = (Math.random() - 0.5) * 11; e.rot = 0; }
   if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
   else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
 
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
-function castKenpa() { const p = player; if (p.kenpaCd > 0 || p.mp < CONFIG.KENPA_MP) return; p.mp -= CONFIG.KENPA_MP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
-function castHomura() { const p = player; if (p.homuraCd > 0 || p.mp < CONFIG.HOMURA_MP) return; p.mp -= CONFIG.HOMURA_MP; p.homuraCd = CONFIG.HOMURA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.HOMURA_V, vy: 0, r: CONFIG.HOMURA_R, alive: true, friendly: true, mult: CONFIG.HOMURA_MULT, pierce: CONFIG.HOMURA_PIERCE, flame: true }); }
-function castSpin() { const p = player; if (p.spinCd > 0 || p.mp < CONFIG.SPIN_MP) return; p.mp -= CONFIG.SPIN_MP; p.spinCd = CONFIG.SPIN_CD; p.spinTimer = CONFIG.SPIN_ACTIVE; for (const e of enemies) if (e.alive && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.SPIN_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT); shake = Math.max(shake, 5); }
-function castMayu() { const p = player; if (p.mayuCd > 0 || p.mp < CONFIG.MAYU_MP) return; p.mp -= CONFIG.MAYU_MP; p.mayuCd = CONFIG.MAYU_CD; p.mayuTimer = CONFIG.MAYU_DUR; }
-function castRaijin() { const p = player; if (p.raijinCd > 0 || p.mp < CONFIG.RAIJIN_MP) return; p.mp -= CONFIG.RAIJIN_MP; p.raijinCd = CONFIG.RAIJIN_CD;
+function castKenpa() { const p = player; if (p.kenpaCd > 0 || Math.floor(p.ap) < CONFIG.KENPA_AP) return; p.ap -= CONFIG.KENPA_AP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
+function castHomura() { const p = player; if (p.homuraCd > 0 || Math.floor(p.ap) < CONFIG.HOMURA_AP) return; p.ap -= CONFIG.HOMURA_AP; p.homuraCd = CONFIG.HOMURA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.HOMURA_V, vy: 0, r: CONFIG.HOMURA_R, alive: true, friendly: true, mult: CONFIG.HOMURA_MULT, pierce: CONFIG.HOMURA_PIERCE, flame: true }); }
+function castSpin() { const p = player; if (p.spinCd > 0 || Math.floor(p.ap) < CONFIG.SPIN_AP) return; p.ap -= CONFIG.SPIN_AP; p.spinCd = CONFIG.SPIN_CD; p.spinTimer = CONFIG.SPIN_ACTIVE; for (const e of enemies) if (e.alive && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.SPIN_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT); shake = Math.max(shake, 5); }
+function castMayu() { const p = player; if (p.mayuCd > 0 || Math.floor(p.ap) < CONFIG.MAYU_AP) return; p.ap -= CONFIG.MAYU_AP; p.mayuCd = CONFIG.MAYU_CD; p.mayuTimer = CONFIG.MAYU_DUR; }
+function castRaijin() { const p = player; if (p.raijinCd > 0 || Math.floor(p.ap) < CONFIG.RAIJIN_AP) return; p.ap -= CONFIG.RAIJIN_AP; p.raijinCd = CONFIG.RAIJIN_CD;
   const near = enemies.filter(e => e.alive && e.y > cameraY - 20 && e.y < cameraY + H + 20).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, CONFIG.RAIJIN_TARGETS);
   for (const e of near) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.RAIJIN_MULT); if (near.length) shake = Math.max(shake, 6); }
-function castTri() { const p = player; if (p.triCd > 0 || p.mp < CONFIG.TRI_MP) return; p.mp -= CONFIG.TRI_MP; p.triCd = CONFIG.TRI_CD;
+function castTri() { const p = player; if (p.triCd > 0 || Math.floor(p.ap) < CONFIG.TRI_AP) return; p.ap -= CONFIG.TRI_AP; p.triCd = CONFIG.TRI_CD;
   for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT, pierce: 0 }); }
 const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri };
 
@@ -327,7 +329,7 @@ function update(dt) {
   for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
   if (shake > 0) shake = Math.max(0, shake - 60 * dt);
   if (hp0flash > 0) hp0flash -= dt;
-  if (p.mp < maxMP()) p.mp = Math.min(maxMP(), p.mp + CONFIG.MP_REGEN * dt);
+  if (p.ap < maxAP()) p.ap = Math.min(maxAP(), p.ap + CONFIG.AP_REGEN * dt);   // 時間でゆっくりAP回復
 
   const inX = (held.right() ? 1 : 0) - (held.left() ? 1 : 0);
 
@@ -436,7 +438,7 @@ function update(dt) {
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
-    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
+    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'crawler' ? CONFIG.DMG_CRAWLER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
   if (p.nailTimer > 0) p.nailHitThisSwing = true;
@@ -651,8 +653,13 @@ function drawHUD() {
   ctx.textAlign = 'left';
   const total = maxQ(); let px = 14;
   for (let i = 0; i < total; i++) { ctx.fillStyle = i < player.hpQ ? '#e74c3c' : '#3a4150'; roundRect(px, 44, 7, 14, 2); ctx.fill(); px += 9; if ((i + 1) % CONFIG.QPH === 0) px += 6; }
-  ctx.fillStyle = '#22303f'; ctx.fillRect(14, 64, 96, 7);
-  ctx.fillStyle = '#48b1d6'; ctx.fillRect(14, 64, 96 * (player.mp / maxMP()), 7);
+  { const n = maxAP(), full = Math.floor(player.ap), frac = player.ap - full, r = 5, gap = 14, oy = 67;   // AP=緑の円(FF7R風pip)
+    for (let i = 0; i < n; i++) { const ox = 18 + i * gap;
+      ctx.beginPath(); ctx.arc(ox, oy, r, 0, 6.2832); ctx.fillStyle = '#163029'; ctx.fill();                          // 空き
+      if (i < full) { ctx.beginPath(); ctx.arc(ox, oy, r, 0, 6.2832); ctx.fillStyle = '#4be8a0'; ctx.fill(); }        // 満pip
+      else if (i === full && frac > 0) { ctx.beginPath(); ctx.moveTo(ox, oy); ctx.arc(ox, oy, r, -Math.PI / 2, -Math.PI / 2 + frac * 6.2832); ctx.closePath(); ctx.fillStyle = '#4be8a0'; ctx.fill(); }   // 回復中pip
+      ctx.beginPath(); ctx.arc(ox, oy, r, 0, 6.2832); ctx.strokeStyle = '#2f6b5a'; ctx.lineWidth = 1.5; ctx.stroke();
+    } }
   if (player.state === 'cling') { const gg = Math.max(0, 1 - player.clingHold / CONFIG.CLING_GRIP_TIME); ctx.font = '11px system-ui'; ctx.fillStyle = gg > 0 ? '#5dade2' : '#e67e22'; ctx.fillText((gg > 0 ? 'つかまり中' : 'ずり落ち！') + (player.keys > 0 ? '  E:横穴' : ''), 118, 72); }
 }
 // 左Shiftホールド中：画面中央に上下左右(W↑/S↓/A←/D→)でセット済みスキルを簡易ポップ表示
@@ -665,12 +672,12 @@ function drawSkillRadial() {
   ctx.textAlign = 'center';
   for (const k of ['W', 'A', 'S', 'D']) {
     const m = SKILL_META[meta.slots[k]]; if (!m) continue;
-    const [x, y] = pos[k], cost = CONFIG[m.mp], cd = player[m.cd] || 0, usable = player.mp >= cost && cd <= 0, w = 80, h = 34;
+    const [x, y] = pos[k], cost = CONFIG[m.ap], cd = player[m.cd] || 0, usable = Math.floor(player.ap) >= cost && cd <= 0, w = 80, h = 34;
     ctx.fillStyle = usable ? 'rgba(40,56,76,.94)' : 'rgba(20,26,34,.9)'; roundRect(x - w / 2, y - h / 2, w, h, 7); ctx.fill();
     ctx.strokeStyle = usable ? '#5dade2' : '#39424f'; ctx.lineWidth = 1.5; ctx.stroke();
     if (cd > 0) { ctx.fillStyle = 'rgba(0,0,0,.5)'; roundRect(x - w / 2, y - h / 2, w * Math.min(1, cd / (CONFIG[m.cdMax] || 1)), h, 7); ctx.fill(); }
     ctx.fillStyle = usable ? '#eaf4ff' : '#6b7686'; ctx.font = 'bold 14px system-ui'; ctx.fillText(`${arrow[k]} ${m.name}`, x, y - 1);
-    ctx.font = '10px system-ui'; ctx.fillStyle = usable ? '#9fc4dd' : '#566273'; ctx.fillText(`MP ${cost}`, x, y + 12);
+    ctx.font = '10px system-ui'; ctx.fillStyle = usable ? '#7fe0b8' : '#566273'; ctx.fillText(`AP ${cost}`, x, y + 12);
   }
   ctx.textAlign = 'left';
 }
@@ -680,8 +687,8 @@ function buildHideoutRows() {
   const rows = [{ header: '── 器（カケラ4個で器1個・購入でベンチ全回復）──' }];
   rows.push({ label: `HPカケラ 購入  [${meta.heartShards}/4]  最大ハート ${CONFIG.HEARTS_MAX + meta.heartsBonus}/${CONFIG.HEARTS_CAP}${CONFIG.HEARTS_MAX + meta.heartsBonus >= CONFIG.HEARTS_CAP ? ' MAX' : ''}`, cost: `◆${CONFIG.HEART_SHARD_GOLD}`, can: meta.gold >= CONFIG.HEART_SHARD_GOLD && (CONFIG.HEARTS_MAX + meta.heartsBonus) < CONFIG.HEARTS_CAP,
     act: () => { meta.gold -= CONFIG.HEART_SHARD_GOLD; if (++meta.heartShards >= 4) { meta.heartShards = 0; meta.heartsBonus++; } player.hpQ = maxQ(); } });
-  rows.push({ label: `MPカケラ 購入  [${meta.mpShards}/4]  最大MP ${maxMP()}`, cost: `SP${CONFIG.MP_SHARD_SP}`, can: meta.sp >= CONFIG.MP_SHARD_SP,
-    act: () => { meta.sp -= CONFIG.MP_SHARD_SP; if (++meta.mpShards >= 4) { meta.mpShards = 0; meta.mpBonus++; } player.mp = maxMP(); } });
+  rows.push({ label: `APカケラ 購入  [${meta.apShards}/4]  最大AP ${maxAP()}/${CONFIG.AP_CAP}${maxAP() >= CONFIG.AP_CAP ? ' MAX' : ''}`, cost: `SP${CONFIG.AP_SHARD_SP}`, can: meta.sp >= CONFIG.AP_SHARD_SP && maxAP() < CONFIG.AP_CAP,
+    act: () => { meta.sp -= CONFIG.AP_SHARD_SP; if (++meta.apShards >= 4) { meta.apShards = 0; meta.apBonus++; } player.ap = maxAP(); } });
   rows.push({ header: '── スキル（SP解放 / 枠割当）──' });
   for (const id of SKILL_IDS) if (!meta.unlocked.includes(id)) rows.push({ label: `解放: ${SKILL_META[id].name}`, cost: `SP${CONFIG.UNLOCK_SP}`, can: meta.sp >= CONFIG.UNLOCK_SP, act: () => { meta.sp -= CONFIG.UNLOCK_SP; meta.unlocked.push(id); } });
   for (const dir of ['W', 'A', 'S', 'D']) rows.push({ label: `枠 ${dir}: ${SKILL_META[meta.slots[dir]].name}  ▸切替`, cost: '', can: meta.unlocked.length > 1, act: () => { const u = meta.unlocked, i = u.indexOf(meta.slots[dir]); meta.slots[dir] = u[(i + 1) % u.length]; } });
