@@ -344,9 +344,8 @@ function castDash() { const p = player; if (p.dashCd > 0 || Math.floor(p.ap) < C
 function bombChargeK(charge) { return Math.min(1, Math.max(0, (charge - CONFIG.BOMB_CHARGE_MIN) / (CONFIG.BOMB_CHARGE_MAX - CONFIG.BOMB_CHARGE_MIN))); }   // 押下時間→0..1(MIN以下=0=真下)
 function throwBomb(charge) { const p = player; if (p.bombCd > 0 || Math.floor(p.ap) < CONFIG.BOMB_AP) return; p.ap -= CONFIG.BOMB_AP; p.bombCd = CONFIG.BOMB_CD;
   const k = bombChargeK(charge);
-  const vx = p.facing * CONFIG.BOMB_VX_MAX * k, vy = -CONFIG.BOMB_VY_ARC * k;   // k=0→真下に落下、kが上がるほど前方へ遠く弧を描く
-  const sx = p.x + (k > 0 ? p.facing * p.w / 2 : 0), syy = p.y + (k > 0 ? 0 : p.h * 0.3);   // 真下は中心の少し下から(即ポゴ範囲)、前投げは前縁から
-  bombs.push({ x: sx, y: syy, vx, vy, r: CONFIG.BOMB_R, t: 0, live: true }); }   // 起爆判定はupdateで
+  if (k <= 0) { const pb = pogoBox(); bombs.push({ x: p.x, y: pb.y, vx: 0, vy: Math.max(p.vy, 0), r: CONFIG.BOMB_R, t: 0, live: true }); }   // 単押し=真下：足元(ポゴ範囲)に出し主人公の落下速度を継ぐ→置き去りにならず即ポゴ可能
+  else bombs.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.BOMB_VX_MAX * k, vy: -CONFIG.BOMB_VY_ARC * k, r: CONFIG.BOMB_R, t: 0, live: true }); }   // 長押し=前方ロブ(中心前縁から弧)。起爆判定はupdateで
 function explodeBomb(b) {   // 起爆：AoEダメージ＋敵弾を消す＋プレイヤーを爆心の逆へ吹き飛ばす(真下=大上昇)
   const bx = b.x, by = b.y, p = player;
   for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && Math.hypot(e.x - bx, e.y - by) < CONFIG.BOMB_RADIUS + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.BOMB_MULT);
