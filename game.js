@@ -290,9 +290,13 @@ function castRaijin() { const p = player; if (p.raijinCd > 0 || Math.floor(p.ap)
   for (const e of near) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.RAIJIN_MULT); if (near.length) shake = Math.max(shake, 6); }
 function castTri() { const p = player; if (p.triCd > 0 || Math.floor(p.ap) < CONFIG.TRI_AP) return; p.ap -= CONFIG.TRI_AP; p.triCd = CONFIG.TRI_CD;
   for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT, pierce: 0 }); }
-function castDash() { const p = player; if (p.dashCd > 0 || Math.floor(p.ap) < CONFIG.DASH_AP) return;
-  let tgt = null, best = CONFIG.DASH_RANGE;                                   // 近い敵をロックオン
+function lockTarget() {   // 突進の自動ロックオン対象＝索敵範囲内で最寄りの生きてる敵(マーカーとcastDashで共有)
+  const p = player; let tgt = null, best = CONFIG.DASH_RANGE;
   for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < best) { best = d; tgt = e; } }
+  return tgt;
+}
+function castDash() { const p = player; if (p.dashCd > 0 || Math.floor(p.ap) < CONFIG.DASH_AP) return;
+  const tgt = lockTarget();
   let dx = tgt ? tgt.x - p.x : p.facing * CONFIG.DASH_FWD, dy = tgt ? tgt.y - p.y : 0;
   const dist = Math.hypot(dx, dy) || 1, speed = Math.min(CONFIG.DASH_SPEED_MAX, Math.max(dist, 60) / CONFIG.DASH_ACTIVE);   // 突進尺で到達する速度(上限)
   p.ap -= CONFIG.DASH_AP; p.dashCd = CONFIG.DASH_CD;
@@ -647,6 +651,15 @@ function render() {
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ
   if (p.spinTimer > 0) { ctx.strokeStyle = `rgba(255,255,255,${0.5 * p.spinTimer / CONFIG.SPIN_ACTIVE})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, sy(p.y), CONFIG.SPIN_R, 0, 6.2832); ctx.stroke(); }
   if (p.state === 'dash' && slashImgs[2] && slashImgs[2].ok) { const ang = Math.atan2(p.dashVy, p.dashVx), img = slashImgs[2], dh = SLASH_H * 1.3, dw = dh * (img.width / img.height); ctx.save(); ctx.translate(p.x, sy(p.y)); ctx.rotate(ang - Math.PI); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore(); }   // 突撃斬りの白弧(進行方向)
+  if (Object.values(meta.slots).includes('dash')) { const t = lockTarget(); if (t) {   // ロックオンマーカー(白丸＋十字ティック)。突撃が使えると明るく。暗縁取りで白敵でも視認
+    const rx = t.x, ry = sy(t.y), R = 15, a = (p.dashCd <= 0 && Math.floor(p.ap) >= CONFIG.DASH_AP) ? 0.9 : 0.4;
+    const ticks = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    const ring = () => { ctx.beginPath(); ctx.arc(rx, ry, R, 0, 6.2832); ctx.stroke(); for (const [dx, dy] of ticks) { ctx.beginPath(); ctx.moveTo(rx + dx * (R - 3), ry + dy * (R - 3)); ctx.lineTo(rx + dx * (R + 5), ry + dy * (R + 5)); ctx.stroke(); } };
+    ctx.save();
+    ctx.strokeStyle = `rgba(0,0,0,${a * 0.55})`; ctx.lineWidth = 4; ring();      // 暗い縁取り
+    ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 1.6; ring();     // 白本体
+    ctx.restore();
+  } }
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
   drawHUD();
