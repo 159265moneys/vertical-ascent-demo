@@ -41,6 +41,7 @@ const CONFIG = {
   MAYU_AP: 2, MAYU_DUR: 4.0, MAYU_REDUCE: 0.5, MAYU_CD: 6.0,                       // W：守護の繭（被ダメ減）
   RAIJIN_AP: 2, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
   TRI_AP: 2, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
+  DASH_AP: 1, DASH_RANGE: 300, DASH_ACTIVE: 0.16, DASH_CD: 0.26, DASH_MULT: 1.5, DASH_SPEED_MAX: 1600, DASH_FWD: 160,  // ロックオン突撃斬り(接着剤技)：AP/索敵範囲/突進尺/CT/威力/最大速/無索敵時の前方距離
   UNLOCK_SP: 10,
   // --- チャーム ---
   NOTCH_EXPAND_GOLD: 40, WKICK_BONUS: 1.25, PARA_FALL: 0.5, DEF_REDUCE: 1,
@@ -85,6 +86,7 @@ const SKILL_META = {
   homura: { name: '焔', ap: 'HOMURA_AP', cd: 'homuraCd', cdMax: 'HOMURA_CD' },
   raijin: { name: '落雷', ap: 'RAIJIN_AP', cd: 'raijinCd', cdMax: 'RAIJIN_CD' },
   tri: { name: '三連剣波', ap: 'TRI_AP', cd: 'triCd', cdMax: 'TRI_CD' },
+  dash: { name: 'ロックオン突撃', ap: 'DASH_AP', cd: 'dashCd', cdMax: 'DASH_CD' },
 };
 const SKILL_IDS = Object.keys(SKILL_META);
 // チャーム（金で購入・ノッチ枠内で装着）。効果は各所が hasCharm() を参照
@@ -232,7 +234,7 @@ function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta))
 let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, apShards: 0, heartsBonus: 0, apBonus: 0,
-  unlocked: ['mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'kenpa', S: 'spin', D: 'homura' },
+  unlocked: ['dash', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'dash', S: 'spin', D: 'homura' },
   ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
 meta.heartsBonus = Math.min(Math.max(0, meta.heartsBonus | 0), CONFIG.HEARTS_CAP - CONFIG.HEARTS_MAX);   // 器進行を上限(=10器)内にclamp＝旧/不正セーブも自動補正
@@ -249,7 +251,7 @@ function reset() {
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
-    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0,
+    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0,
     hpQ: maxQ(), ap: maxAP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
@@ -288,7 +290,14 @@ function castRaijin() { const p = player; if (p.raijinCd > 0 || Math.floor(p.ap)
   for (const e of near) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.RAIJIN_MULT); if (near.length) shake = Math.max(shake, 6); }
 function castTri() { const p = player; if (p.triCd > 0 || Math.floor(p.ap) < CONFIG.TRI_AP) return; p.ap -= CONFIG.TRI_AP; p.triCd = CONFIG.TRI_CD;
   for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT, pierce: 0 }); }
-const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri };
+function castDash() { const p = player; if (p.dashCd > 0 || Math.floor(p.ap) < CONFIG.DASH_AP) return;
+  let tgt = null, best = CONFIG.DASH_RANGE;                                   // 近い敵をロックオン
+  for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < best) { best = d; tgt = e; } }
+  let dx = tgt ? tgt.x - p.x : p.facing * CONFIG.DASH_FWD, dy = tgt ? tgt.y - p.y : 0;
+  const dist = Math.hypot(dx, dy) || 1, speed = Math.min(CONFIG.DASH_SPEED_MAX, Math.max(dist, 60) / CONFIG.DASH_ACTIVE);   // 突進尺で到達する速度(上限)
+  p.ap -= CONFIG.DASH_AP; p.dashCd = CONFIG.DASH_CD;
+  p.dashVx = dx / dist * speed; p.dashVy = dy / dist * speed; p.dashTimer = CONFIG.DASH_ACTIVE; p.dashHit = new Set(); p.facing = dx < 0 ? -1 : 1; p.state = 'dash'; p.clingWall = 0; }
+const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri, dash: castDash };
 
 function makeEnemy(type, x, y) {
   const base = { type, x, y, baseX: x, baseY: y, alive: true, flash: 0, phase: Math.random() * 6.28, fireCd: CONFIG.ATTACKER_FIRE_CD * (0.4 + Math.random() * 0.6) };
@@ -326,14 +335,18 @@ function update(dt) {
   const wk = hasCharm('wkick') ? CONFIG.WKICK_BONUS : 1;   // 壁キック延長チャーム
   if (jumpBuffer > 0) jumpBuffer -= dt;
   if (p.iframe > 0) p.iframe -= dt;
-  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
+  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','dashCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
   if (shake > 0) shake = Math.max(0, shake - 60 * dt);
   if (hp0flash > 0) hp0flash -= dt;
   if (p.ap < maxAP()) p.ap = Math.min(maxAP(), p.ap + CONFIG.AP_REGEN * dt);   // 時間でゆっくりAP回復
 
   const inX = (held.right() ? 1 : 0) - (held.left() ? 1 : 0);
 
-  if (p.state === 'fallStun') {
+  if (p.state === 'dash') {
+    p.dashTimer -= dt;
+    p.vx = p.dashVx; p.vy = p.dashVy; p.iframe = Math.max(p.iframe, 0.06);   // 突進中＝指定速度/無重力/微無敵
+    if (p.dashTimer <= 0) { p.state = 'air'; p.vx = p.dashVx * 0.35; p.vy = p.dashVy * 0.35; p.coyote = 0; }   // 余韻の慣性で次の対空へ繋ぐ
+  } else if (p.state === 'fallStun') {
     p.fallStun -= dt;
     p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL * 1.15 * (hasCharm('para') ? CONFIG.PARA_FALL : 1));   // パラシュート
     if (p.fallStun <= 0) { p.state = 'air'; p.hpQ = maxQ(); }
@@ -438,6 +451,7 @@ function update(dt) {
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
+    if (e.alive && p.state === 'dash' && p.dashHit && !p.dashHit.has(e) && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.DASH_MULT); p.dashHit.add(e); }   // ロックオン突撃：通過した敵を斬る
     if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'crawler' ? CONFIG.DMG_CRAWLER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
@@ -632,6 +646,7 @@ function render() {
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ
   if (p.spinTimer > 0) { ctx.strokeStyle = `rgba(255,255,255,${0.5 * p.spinTimer / CONFIG.SPIN_ACTIVE})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, sy(p.y), CONFIG.SPIN_R, 0, 6.2832); ctx.stroke(); }
+  if (p.state === 'dash' && slashImgs[2] && slashImgs[2].ok) { const ang = Math.atan2(p.dashVy, p.dashVx), img = slashImgs[2], dh = SLASH_H * 1.3, dw = dh * (img.width / img.height); ctx.save(); ctx.translate(p.x, sy(p.y)); ctx.rotate(ang - Math.PI); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore(); }   // 突撃斬りの白弧(進行方向)
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
   drawHUD();
