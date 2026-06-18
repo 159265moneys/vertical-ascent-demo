@@ -42,6 +42,9 @@ const CONFIG = {
   RAIJIN_AP: 2, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
   TRI_AP: 2, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
   DASH_AP: 1, DASH_RANGE: 300, DASH_ACTIVE: 0.16, DASH_CD: 0.26, DASH_MULT: 1.5, DASH_SPEED_MAX: 1600, DASH_FWD: 160,  // ロックオン突撃斬り(接着剤技)：AP/索敵範囲/突進尺/CT/威力/最大速/無索敵時の前方距離
+  // ポゴ爆弾：前方に投げる→敵接触/自分の攻撃(ポゴ等)/導火線で起爆→AoE＋プレイヤーを爆心の逆へ吹き飛ばす(真下起爆=大きく上昇)
+  BOMB_AP: 2, BOMB_CD: 0.5, BOMB_R: 10, BOMB_THROW_VX: 230, BOMB_THROW_VY: -170, BOMB_GRAV: 1700, BOMB_FUSE: 1.5,
+  BOMB_RADIUS: 88, BOMB_MULT: 2.2, BOMB_LAUNCH: 1400, BOMB_LAUNCH_R: 124, BOMB_IFRAME: 0.12, BOMB_SHAKE: 9, BOMB_EXP_T: 0.32,
   UNLOCK_SP: 10,
   // --- チャーム ---
   NOTCH_EXPAND_GOLD: 40, WKICK_BONUS: 1.25, PARA_FALL: 0.5, DEF_REDUCE: 1,
@@ -87,6 +90,7 @@ const SKILL_META = {
   raijin: { name: '落雷', ap: 'RAIJIN_AP', cd: 'raijinCd', cdMax: 'RAIJIN_CD' },
   tri: { name: '三連剣波', ap: 'TRI_AP', cd: 'triCd', cdMax: 'TRI_CD' },
   dash: { name: 'ロックオン突撃', ap: 'DASH_AP', cd: 'dashCd', cdMax: 'DASH_CD' },
+  bomb: { name: 'ポゴ爆弾', ap: 'BOMB_AP', cd: 'bombCd', cdMax: 'BOMB_CD' },
 };
 const SKILL_IDS = Object.keys(SKILL_META);
 // チャーム（金で購入・ノッチ枠内で装着）。効果は各所が hasCharm() を参照
@@ -225,7 +229,7 @@ function drawTint(img, dx, dy, dw, dh, style) {
   ctx.drawImage(_tintCv, dx, dy, dw, dh);
 }
 
-let player, cameraY, maxHeight, enemies, projectiles, platforms, sparks, spawnTopY, bandIndex, bossNextH, hitStop, shake, hp0flash;
+let player, cameraY, maxHeight, enemies, projectiles, bombs, explosions, platforms, sparks, spawnTopY, bandIndex, bossNextH, hitStop, shake, hp0flash;
 
 // 恒久層（localStorage）：金・SP・ベスト高度は reset() で消えない＝2層セーブの恒久側
 const META_KEY = 'vertical_ascent_meta';
@@ -234,9 +238,11 @@ function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta))
 let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, apShards: 0, heartsBonus: 0, apBonus: 0,
-  unlocked: ['dash', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'dash', S: 'spin', D: 'homura' },
+  unlocked: ['dash', 'bomb', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'mayu', A: 'dash', S: 'bomb', D: 'homura' },
   ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
+for (const id of ['dash', 'bomb']) if (!meta.unlocked.includes(id)) meta.unlocked.push(id);   // 新スキルは既存セーブにも解放
+if (!Object.values(meta.slots).includes('bomb')) meta.slots.S = 'bomb';                          // 未割当ならS枠に(店で変更可)
 meta.heartsBonus = Math.min(Math.max(0, meta.heartsBonus | 0), CONFIG.HEARTS_CAP - CONFIG.HEARTS_MAX);   // 器進行を上限(=10器)内にclamp＝旧/不正セーブも自動補正
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
 meta.apBonus = Math.min(Math.max(0, meta.apBonus | 0), CONFIG.AP_CAP - CONFIG.AP_BASE);   // AP器進行を上限(=10)内にclamp
@@ -251,11 +257,11 @@ function reset() {
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
-    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0,
+    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, bombCd: 0,
     hpQ: maxQ(), ap: maxAP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
-  enemies = []; projectiles = []; platforms = []; sparks = []; hitStop = 0;
+  enemies = []; projectiles = []; bombs = []; explosions = []; platforms = []; sparks = []; hitStop = 0;
   spawnTopY = -260; bandIndex = 0; bossNextH = CONFIG.BOSS_EVERY; shake = 0; hp0flash = 0; paused = false;
 }
 
@@ -301,7 +307,25 @@ function castDash() { const p = player; if (p.dashCd > 0 || Math.floor(p.ap) < C
   const dist = Math.hypot(dx, dy) || 1, speed = Math.min(CONFIG.DASH_SPEED_MAX, Math.max(dist, 60) / CONFIG.DASH_ACTIVE);   // 突進尺で到達する速度(上限)
   p.ap -= CONFIG.DASH_AP; p.dashCd = CONFIG.DASH_CD;
   p.dashVx = dx / dist * speed; p.dashVy = dy / dist * speed; p.dashTimer = CONFIG.DASH_ACTIVE; p.dashHit = new Set(); p.facing = dx < 0 ? -1 : 1; p.state = 'dash'; p.clingWall = 0; }
-const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri, dash: castDash };
+function castBomb() { const p = player; if (p.bombCd > 0 || Math.floor(p.ap) < CONFIG.BOMB_AP) return; p.ap -= CONFIG.BOMB_AP; p.bombCd = CONFIG.BOMB_CD;
+  bombs.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.BOMB_THROW_VX, vy: CONFIG.BOMB_THROW_VY, r: CONFIG.BOMB_R, t: 0, live: true }); }   // 前方へ放物線で投げる。起爆はupdateで判定
+function explodeBomb(b) {   // 起爆：AoEダメージ＋敵弾を消す＋プレイヤーを爆心の逆へ吹き飛ばす(真下=大上昇)
+  const bx = b.x, by = b.y, p = player;
+  for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && Math.hypot(e.x - bx, e.y - by) < CONFIG.BOMB_RADIUS + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.BOMB_MULT);
+  for (const pr of projectiles) if (pr.alive && !pr.friendly && Math.hypot(pr.x - bx, pr.y - by) < CONFIG.BOMB_RADIUS) { pr.alive = false; spawnSparks(pr.x, pr.y); }   // 爆風で敵弾も消す＝対空に寄与
+  const dx = p.x - bx, dy = p.y - by, d = Math.hypot(dx, dy);
+  if (d < CONFIG.BOMB_LAUNCH_R) {   // 吹き飛ばし
+    const ux = d > 1 ? dx / d : 0, uy = d > 1 ? dy / d : -1;
+    p.vx = Math.max(-CONFIG.MAX_AIR_X * 1.4, Math.min(CONFIG.MAX_AIR_X * 1.4, p.vx + ux * CONFIG.BOMB_LAUNCH));
+    p.vy = Math.min(p.vy, uy * CONFIG.BOMB_LAUNCH);   // 上向き(uy<0)なら最低でもその速度=大跳躍、既に強く上昇中ならそのまま
+    if (p.state !== 'fallStun' && p.state !== 'dash') { p.state = 'air'; p.clingWall = 0; p.coyote = 0; p.airJumps = 0; }
+    p.iframe = Math.max(p.iframe, CONFIG.BOMB_IFRAME);
+  }
+  explosions.push({ x: bx, y: by, t: 0 });
+  for (let i = 0; i < 3; i++) spawnSparks(bx + (Math.random() - 0.5) * 44, by + (Math.random() - 0.5) * 44);
+  shake = Math.max(shake, CONFIG.BOMB_SHAKE); hitStop = Math.max(hitStop, 0.05);
+}
+const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri, dash: castDash, bomb: castBomb };
 
 function makeEnemy(type, x, y) {
   const base = { type, x, y, baseX: x, baseY: y, alive: true, flash: 0, phase: Math.random() * 6.28, fireCd: CONFIG.ATTACKER_FIRE_CD * (0.4 + Math.random() * 0.6) };
@@ -339,7 +363,7 @@ function update(dt) {
   const wk = hasCharm('wkick') ? CONFIG.WKICK_BONUS : 1;   // 壁キック延長チャーム
   if (jumpBuffer > 0) jumpBuffer -= dt;
   if (p.iframe > 0) p.iframe -= dt;
-  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','dashCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
+  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','dashCd','bombCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
   if (shake > 0) shake = Math.max(0, shake - 60 * dt);
   if (hp0flash > 0) hp0flash -= dt;
   if (p.ap < maxAP()) p.ap = Math.min(maxAP(), p.ap + CONFIG.AP_REGEN * dt);   // 時間でゆっくりAP回復
@@ -482,8 +506,28 @@ function update(dt) {
     if (pr.y > cameraY + H + 80 || pr.y < cameraY - 120) pr.alive = false;
   }
 
+  for (const b of bombs) {   // ポゴ爆弾：放物線で落下→壁で弾む→敵接触/自分の攻撃/導火線で起爆
+    if (!b.live) continue;
+    b.t += dt; b.vy += CONFIG.BOMB_GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    const wl = wallL(b.y) + b.r, wr = wallR(b.y) - b.r;
+    if (b.x < wl) { b.x = wl; b.vx = Math.abs(b.vx) * 0.5; } if (b.x > wr) { b.x = wr; b.vx = -Math.abs(b.vx) * 0.5; }
+    let boom = b.t >= CONFIG.BOMB_FUSE;
+    if (!boom) for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && overlap(b.x, b.y, b.r * 2, b.r * 2, e.x, e.y, e.w, e.h)) { boom = true; break; }
+    if (!boom) {   // 自分の攻撃で起爆(ポゴで真下を起爆→大上昇が主用途)
+      const pg = pogoBox(), ub = upBox(), nb = nailBox(), bw = b.r * 2;
+      if (p.pogoTimer > 0 && overlap(pg.x, pg.y, pg.w, pg.h, b.x, b.y, bw, bw)) { boom = true; p.pogoHitThisSwing = true; p.pogoTimer = 0; }
+      else if (p.upTimer > 0 && overlap(ub.x, ub.y, ub.w, ub.h, b.x, b.y, bw, bw)) boom = true;
+      else if (p.nailTimer > 0 && overlap(nb.x, nb.y, nb.w, nb.h, b.x, b.y, bw, bw)) boom = true;
+      else if (p.state === 'dash' && overlap(p.x, p.y, p.w, p.h, b.x, b.y, bw, bw)) boom = true;
+    }
+    if (boom) { b.live = false; explodeBomb(b); }
+    else if (b.y > cameraY + H + 140) b.live = false;   // 圏外で不発消滅
+  }
+  for (const ex of explosions) ex.t += dt;
+
   enemies = enemies.filter(e => e.alive && e.y < cameraY + H + CONFIG.ENEMY_KEEP);   // 死んだ敵=倒したら恒久消滅／生存(スルー)敵は遥か下まで保持→降りれば再会
   projectiles = projectiles.filter(pr => pr.alive);
+  bombs = bombs.filter(b => b.live); explosions = explosions.filter(ex => ex.t < CONFIG.BOMB_EXP_T);
   for (const sp of sparks) { sp.life -= dt; sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.vy += 700 * dt; sp.vx *= 0.92; }
   sparks = sparks.filter(sp => sp.life > 0);
   for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
@@ -643,6 +687,19 @@ function render() {
   for (const e of enemies) { const y = sy(e.y); if (y < -140 || y > H + 140) continue; drawEnemy(e); }
   for (const pl of platforms) { const py = sy(pl.y); if (py < -40 || py > H + 40) continue; const a = Math.min(1, pl.life / 1.2); ctx.fillStyle = `rgba(126,232,192,${0.3 + 0.45 * a})`; roundRect(pl.x - pl.w / 2, py - pl.h / 2, pl.w, pl.h, 5); ctx.fill(); ctx.strokeStyle = `rgba(180,255,230,${0.6 * a})`; ctx.lineWidth = 2; ctx.stroke(); }   // ボスの一時足場(寿命で点滅消失)
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
+  for (const b of bombs) {   // 爆弾＝黒球＋導火線の火花(導火線が近いほど速点滅)
+    const by = sy(b.y), pulse = 0.5 + 0.5 * Math.sin(b.t * (8 + (b.t / CONFIG.BOMB_FUSE) * 40));
+    ctx.fillStyle = '#2a2f3a'; ctx.beginPath(); ctx.arc(b.x, by, b.r, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = '#11151c'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,${120 + Math.floor(120 * pulse)},60,${0.6 + 0.4 * pulse})`; ctx.beginPath(); ctx.arc(b.x + b.r * 0.5, by - b.r * 0.9, 2.5 + 2.5 * pulse, 0, 6.2832); ctx.fill(); ctx.restore();
+  }
+  for (const ex of explosions) {   // 爆発＝広がって消える橙→白リング＋中心フラッシュ
+    const k = ex.t / CONFIG.BOMB_EXP_T, R = 8 + k * CONFIG.BOMB_RADIUS, a = 1 - k, ey = sy(ex.y);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(255,${Math.floor(190 - 120 * k)},90,${a})`; ctx.lineWidth = 1 + 5 * (1 - k); ctx.beginPath(); ctx.arc(ex.x, ey, R, 0, 6.2832); ctx.stroke();
+    ctx.fillStyle = `rgba(255,235,170,${a * 0.45})`; ctx.beginPath(); ctx.arc(ex.x, ey, R * 0.5, 0, 6.2832); ctx.fill();
+    ctx.restore();
+  }
   drawPlayer();
   if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const a = Math.min(1, sp.life * 6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } ctx.restore(); }   // 着弾火花
   const p = player;
