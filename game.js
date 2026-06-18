@@ -146,7 +146,9 @@ const keys = {};
 let jumpBuffer = 0, attackEdge = false, paused = false;
 let invincible = false, autoRise = false;   // デバッグ専用（本番では外す）
 const skillEdge = { W: false, A: false, S: false, D: false };
-const skillMod = () => keys['Space'];   // Space＝スキル修飾(親指で押しやすい) ／ 右Shift＝ジャンプ。ブラウザ安全
+const pad = { left: false, right: false, up: false, down: false, rawLeft: false, rawRight: false, lb: false };   // ゲームパッド由来の連続入力(pollGamepadが毎フレーム更新)
+let padPrev = {};   // パッドのボタン前フレーム状態(エッジ検出用)
+const skillMod = () => keys['Space'] || pad.lb;   // Space または LB＝スキル修飾
 const PREVENT = ['ShiftLeft','ShiftRight','Enter','NumpadEnter','KeyW','KeyA','KeyS','KeyD','Space'];
 addEventListener('keydown', e => {
   if (PREVENT.includes(e.code)) e.preventDefault();
@@ -174,9 +176,36 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyE' && player && player.bombCharging) { throwBomb(player.bombCharge); player.bombCharging = false; } });   // 離した瞬間に投擲(押下時間で飛距離)
 const held = {   // 左Shift中はWASDをスキルに使うので移動/攻撃方向には効かせない
-  left: () => keys['KeyA'] && !skillMod(), right: () => keys['KeyD'] && !skillMod(),
-  up: () => keys['KeyW'] && !skillMod(), down: () => keys['KeyS'] && !skillMod(),
+  left: () => (keys['KeyA'] && !skillMod()) || pad.left, right: () => (keys['KeyD'] && !skillMod()) || pad.right,
+  up: () => (keys['KeyW'] && !skillMod()) || pad.up, down: () => (keys['KeyS'] && !skillMod()) || pad.down,
 };
+// --- ゲームパッド(Gamepad API)。毎フレームpollして既存の入力フラグ(held/jumpBuffer/attackEdge/skillEdge/bombCharge)へ流す。Steam(Electron)でもそのまま効く ---
+function activePad() { const gs = navigator.getGamepads ? navigator.getGamepads() : []; for (const g of gs) if (g) return g; return null; }
+function pollGamepad() {
+  const gp = activePad();
+  if (!gp) { pad.left = pad.right = pad.up = pad.down = pad.rawLeft = pad.rawRight = pad.lb = false; padPrev = {}; return; }
+  const b = i => !!(gp.buttons[i] && gp.buttons[i].pressed), ax = i => gp.axes[i] || 0, DZ = 0.4;
+  const sx = ax(0), sy = ax(1), lb = b(4);
+  pad.lb = lb;                                                                            // LB=スキル修飾(押し続け)
+  pad.left = sx < -DZ || (b(14) && !lb); pad.right = sx > DZ || (b(15) && !lb);           // 移動/照準：左スティック常時＋D-pad(LB非押下時)
+  pad.up = sy < -DZ || (b(12) && !lb); pad.down = sy > DZ || (b(13) && !lb);
+  pad.rawLeft = sx < -DZ || b(14); pad.rawRight = sx > DZ || b(15);                       // しがみつき判定用(LB問わず壁方向へ)
+  const cur = { A: b(0), B: b(1), X: b(2), Y: b(3), RT: b(7), start: b(9), dU: b(12), dD: b(13) };
+  const e = k => cur[k] && !padPrev[k];                                                   // 立ち上がりエッジ
+  if (e('start')) paused = !paused;
+  if (inHideout) { if (e('dU')) hideoutKey('ArrowUp'); if (e('dD')) hideoutKey('ArrowDown'); if (e('A')) hideoutKey('Enter'); if (e('B')) hideoutKey('Escape'); }   // メニュー操作
+  else if (!paused && player) {
+    if (lb) { if (e('Y')) skillEdge.W = true; if (e('X')) skillEdge.A = true; if (e('A')) skillEdge.S = true; if (e('B')) skillEdge.D = true; }   // LB+顔ボタン=スキル(Y上/X左/A下/B右＝WASD菱形)
+    else {
+      if (e('A')) jumpBuffer = CONFIG.JUMP_BUFFER;                                        // A=ジャンプ/壁キック
+      if (e('X')) attackEdge = true;                                                      // X=攻撃(スティック方向で↓ポゴ/↑上/前ネイル)
+      if (e('B') && player.state === 'cling' && player.keys > 0) { player.keys--; inHideout = true; hideoutCursor = 1; saveMeta(); }   // B=横穴(しがみつき+鍵)
+    }
+    if (e('RT') && !player.bombCharging && player.bombCd <= 0 && Math.floor(player.ap) >= CONFIG.BOMB_AP) { player.bombCharging = true; player.bombCharge = 0; }   // RT押下=爆弾チャージ開始
+    if (!cur.RT && padPrev.RT && player.bombCharging) { throwBomb(player.bombCharge); player.bombCharging = false; }                  // RT離す=投擲(押下時間で飛距離)
+  }
+  padPrev = cur;
+}
 
 const SPRITE_VER = 20;   // スプライト差し替え時にbump＝ブラウザ画像キャッシュ回避
 const SPRITE_KEYS = ['idle','run','cling','jump','fall','atk','pogo','up'].flatMap(a => [a + '_r', a + '_l']);   // 8アクション×左右
@@ -393,7 +422,7 @@ function update(dt) {
     const over = p.clingHold - CONFIG.CLING_GRIP_TIME;
     const ny = (held.down() ? 1 : 0) - (held.up() ? 1 : 0);   // W/Sで壁を上下に微移動
     p.vy = over > 0 ? Math.min(CONFIG.CLING_SLIDE_MAX, over * CONFIG.CLING_SLIDE_ACCEL) : ny * CONFIG.CLING_NUDGE_V;
-    const grip = (hasCharm('grip') && p.clingHold < CONFIG.CLING_GRIP_TIME) || (p.clingWall < 0 && keys['KeyA']) || (p.clingWall > 0 && keys['KeyD']);   // 生キー＝左Shift(スキル)中でも壁を掴み続ける／吸着チャーム=掴み時間内は無入力で張り付き(止まってスキル可)
+    const grip = (hasCharm('grip') && p.clingHold < CONFIG.CLING_GRIP_TIME) || (p.clingWall < 0 && (keys['KeyA'] || pad.rawLeft)) || (p.clingWall > 0 && (keys['KeyD'] || pad.rawRight));   // 生キー/スティック＝スキル中でも壁を掴み続ける／吸着チャーム=掴み時間内は無入力で張り付き
     if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; }
     else if (!grip) { p.state = 'air'; p.coyote = CONFIG.COYOTE; p.clingWall = 0; }
   } else {
@@ -428,7 +457,7 @@ function update(dt) {
   if (p.x - p.w / 2 <= wl) { p.x = wl + p.w / 2; side = -1; }
   else if (p.x + p.w / 2 >= wr) { p.x = wr - p.w / 2; side = 1; }
   if (side !== 0 && p.state === 'air') {
-    const toward = (side < 0 && keys['KeyA']) || (side > 0 && keys['KeyD']);
+    const toward = (side < 0 && (keys['KeyA'] || pad.rawLeft)) || (side > 0 && (keys['KeyD'] || pad.rawRight));
     if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
     else p.vx = 0;
   }
@@ -835,6 +864,6 @@ function drawHideout() {
 
 const STEP = 1 / 120;
 let acc = 0, last = performance.now();
-function frame(t) { let dt = (t - last) / 1000; last = t; acc += Math.min(dt, 0.1); while (acc >= STEP) { if (hitStop > 0) { hitStop -= STEP; acc -= STEP; continue; } if (!paused) update(STEP); acc -= STEP; } render(); requestAnimationFrame(frame); }   // hitStop中はupdate凍結＝手応え
+function frame(t) { pollGamepad(); let dt = (t - last) / 1000; last = t; acc += Math.min(dt, 0.1); while (acc >= STEP) { if (hitStop > 0) { hitStop -= STEP; acc -= STEP; continue; } if (!paused) update(STEP); acc -= STEP; } render(); requestAnimationFrame(frame); }   // 毎フレームパッド読取→hitStop中はupdate凍結＝手応え
 reset();
 requestAnimationFrame(frame);
