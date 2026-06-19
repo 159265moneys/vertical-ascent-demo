@@ -422,17 +422,16 @@ const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: ca
 // デバッグ：チェイン連続デモ。ユーザー想定の連鎖をCT/AP無視で順に再現(各stepに個別の間隔g＝爆弾→ポゴは短く)。"今定義してる範囲"で繋がるか確認用
 const POGO = () => { const p = player; p.pogoCd = 0; p.pogoTimer = CONFIG.POGO_ACTIVE; p.pogoHitThisSwing = false; };
 const CHAIN_DEMO = [
-  { g: 0.30, f: () => { const p = player; p.vy = CONFIG.GROUND_JUMP_VY; p.grounded = false; p.jumpHeld = false; } },   // ①ジャンプ(デモはフル高度＝実プレイの長押し相当・カット無効)
-  { g: 0.18, f: () => { const p = player; p.nailCd = 0; p.nailTimer = CONFIG.NAIL_ACTIVE; p.nailHitThisSwing = false; } },                                                  // ②切る(ネイル)
-  { g: 0.12, f: () => { player.bombCd = 0; throwBomb(0); } },                                                                                                               // ③E=爆弾を真下に落とす
-  { g: 0.45, f: POGO },                                                                                                                                                     // ④ポゴで起爆→大上昇
-  { g: 0.30, f: () => { player.shikkuCd = 0; castShikku(); } },                                                                                                             // ⑤疾駆で距離を稼ぐ
-  { g: 0.34, f: () => { player.spinCd = 0; castSpin(); } },                                                                                                                 // ⑥回転斬り
-  { g: 0.28, f: () => { const p = player; p.vy = CONFIG.GROUND_JUMP_VY * 0.92; p.airJumps = 1; p.jumpHeld = false; } },                                                     // ⑦二段ジャンプ(要・二段ジャンプチャーム／デモは強制・フル高度)
-  { g: 0.30, f: () => { player.dashCd = 0; castDash(); } },                                                                                                                 // ⑧突撃(SpaceW)
-  { g: 0.60, f: () => { tenshoLv = 3; player.tenshoCd = 0; castTensho(); } },                                                                                               // ⑨天衝Lv3
-  { g: 0.22, f: () => { player.shunCd = 0; castShun(); } },                                                                                                                 // ⑩瞬影(SpaceS)
-  { g: 0.40, f: POGO },                                                                                                                                                     // ⑪ポゴ
+  { g: 0.30, f: () => { player.dashCd = 0; castDash(); } },                     // ①突撃＝ボスへ寄る(ロックオン)
+  { g: 0.20, f: () => { player.shunCd = 0; castShun(); } },                     // ②瞬影＝当ててボスの真上(ポゴ範囲)へ配置
+  { g: 0.75, f: POGO },                                                         // ③ポゴ＝ボスを踏んで跳ね上げ(下→上)→落下
+  { g: 0.75, f: POGO },                                                         // ④落下→ポゴ(ジャグル・真上維持)
+  { g: 0.60, f: POGO },                                                         // ⑤落下→ポゴ(ジャグル)
+  { g: 0.50, f: () => { tenshoLv = 3; player.tenshoCd = 0; castTensho(); } },   // ⑥天衝Lv3＝大きく打ち上げ直し(UP)
+  { g: 0.30, f: () => { player.dashCd = 0; castDash(); } },                     // ⑦突撃で再度ボスへ
+  { g: 0.20, f: () => { player.shunCd = 0; castShun(); } },                     // ⑧瞬影で真上へ
+  { g: 0.12, f: () => { player.bombCd = 0; throwBomb(0); } },                   // ⑨E=爆弾を真下に
+  { g: 0.50, f: POGO },                                                         // ⑩ポゴ起爆＝大UP〆
 ];
 
 function makeEnemy(type, x, y) {
@@ -620,7 +619,7 @@ function update(dt) {
     }
     else if (e.type === 'boss') {
       e.phase += dt * CONFIG.BOSS_PHASE_SPD;
-      e.x = e.baseX + Math.sin(e.phase) * CONFIG.BOSS_DRIFT_X; e.y = e.baseY + Math.sin(e.phase * 0.7) * CONFIG.BOSS_BOB_Y;
+      if (!SANDBOX) { e.x = e.baseX + Math.sin(e.phase) * CONFIG.BOSS_DRIFT_X; e.y = e.baseY + Math.sin(e.phase * 0.7) * CONFIG.BOSS_BOB_Y; }   // サンドボックスでは停止＝ポゴ・ジャグルの的にしやすい
       const bwl = wallL(e.y), bwr = wallR(e.y); e.x = Math.max(bwl + e.w / 2, Math.min(bwr - e.w / 2, e.x));
       if (!SANDBOX && e.y > cameraY - 80 && e.y < cameraY + H + 80) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { e.mode === 0 ? bossVolley(e) : bossPillars(e); e.mode ^= 1; e.atkCd = CONFIG.BOSS_ATK_CD; } } else { e.atkCd -= dt; if (e.atkCd <= 0) e.windup = CONFIG.BOSS_WINDUP; } }   // サンドボックスでは攻撃せず地味に動くだけ
     }
