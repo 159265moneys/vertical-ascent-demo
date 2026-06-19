@@ -310,7 +310,7 @@ function reset() {
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
-    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, shikkuCd: 0, shunCd: 0, shunT: 0, shunHit: false, shunVanish: 0, bombCd: 0, bombCharging: false, bombCharge: 0, jumpHeld: false, reclingLock: 0,
+    spinTimer: 0, spinCd: 0, spinHit: null, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, shikkuCd: 0, shunCd: 0, shunT: 0, shunHit: false, shunVanish: 0, bombCd: 0, bombCharging: false, bombCharge: 0, jumpHeld: false, reclingLock: 0,
     hpQ: maxQ(), ap: maxAP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
@@ -356,7 +356,7 @@ function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONF
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
 function castKenpa() { const p = player; if (p.kenpaCd > 0 || Math.floor(p.ap) < CONFIG.KENPA_AP) return; p.ap -= CONFIG.KENPA_AP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
 function castHomura() { const p = player; if (p.homuraCd > 0 || Math.floor(p.ap) < CONFIG.HOMURA_AP) return; p.ap -= CONFIG.HOMURA_AP; p.homuraCd = CONFIG.HOMURA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.HOMURA_V, vy: 0, r: CONFIG.HOMURA_R, alive: true, friendly: true, mult: CONFIG.HOMURA_MULT, pierce: CONFIG.HOMURA_PIERCE, flame: true }); }
-function castSpin() { const p = player; if (p.spinCd > 0 || Math.floor(p.ap) < CONFIG.SPIN_AP) return; p.ap -= CONFIG.SPIN_AP; p.spinCd = CONFIG.SPIN_CD; p.spinTimer = CONFIG.SPIN_ACTIVE; for (const e of enemies) if (e.alive && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.SPIN_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT); shake = Math.max(shake, 5); }
+function castSpin() { const p = player; if (p.spinCd > 0 || Math.floor(p.ap) < CONFIG.SPIN_AP) return; p.ap -= CONFIG.SPIN_AP; p.spinCd = CONFIG.SPIN_CD; p.spinTimer = CONFIG.SPIN_ACTIVE; p.spinHit = new Set(); shake = Math.max(shake, 5); }   // 発動だけ。当たり判定は時計回りの掃引でupdate側(当たる毎にヒットストップ＋一時空中停止)
 function castMayu() { const p = player; if (p.mayuCd > 0 || Math.floor(p.ap) < CONFIG.MAYU_AP) return; p.ap -= CONFIG.MAYU_AP; p.mayuCd = CONFIG.MAYU_CD; p.mayuTimer = CONFIG.MAYU_DUR; }
 function castRaijin() { const p = player; if (p.raijinCd > 0 || Math.floor(p.ap) < CONFIG.RAIJIN_AP) return; p.ap -= CONFIG.RAIJIN_AP; p.raijinCd = CONFIG.RAIJIN_CD;
   const near = enemies.filter(e => e.alive && e.y > cameraY - 20 && e.y < cameraY + H + 20).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, CONFIG.RAIJIN_TARGETS);
@@ -506,6 +506,15 @@ function update(dt) {
 
   if (autoRise) { p.state = 'air'; p.clingWall = 0; p.fallStun = 0; p.grounded = false; p.vy = -2000; p.vx = inX * 260; p.iframe = CONFIG.IFRAME; }   // デバッグ：一定速で上昇（左右は手動微調整可）
   { const jHeld = keys['ShiftRight'] || pad.jump; if (p.jumpHeld && !jHeld && p.vy < 0) p.vy *= CONFIG.JUMP_CUT; if (!jHeld || p.vy >= 0) p.jumpHeld = false; }   // 可変ジャンプ：上昇中に離すと上昇速度カット＝ミニジャンプ。長押し/頂点で確定
+  if (p.spinTimer > 0) {   // 回転斬り：一時空中停止(放ってる感)＋時計回りに掃引して当たった敵を順に斬る(各ヒットでヒットストップ)
+    p.vy = 0; p.vx *= 0.82;   // 空中停止
+    const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, swept = prog * 6.2832;   // 上から時計回り
+    for (const e of enemies) { if (!e.alive || e.dead || e.gdeath || (p.spinHit && p.spinHit.has(e))) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) > CONFIG.SPIN_R + e.w / 2) continue;
+      let ea = (Math.atan2(e.y - p.y, e.x - p.x) - START) % 6.2832; if (ea < 0) ea += 6.2832;   // 上基準の時計回り角[0,2π)
+      if (ea <= swept) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT); (p.spinHit || (p.spinHit = new Set())).add(e); }   // 掃引が通過した敵を斬る
+    }
+  }
   p.x += p.vx * dt; p.y += p.vy * dt;
   if (p.state === 'cling') p.x = p.clingWall < 0 ? wallL(p.y) + p.w / 2 : wallR(p.y) - p.w / 2;   // 波形壁に密着＝ズリ落ち中も浮かない
 
@@ -814,7 +823,9 @@ function render() {
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ
   if (p.state === 'shun') drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.shunT / CONFIG.SHUN_DUR, p.facing < 0 ? 'left' : 'right');   // 瞬影の踏み込み斬り
-  if (p.spinTimer > 0) { ctx.strokeStyle = `rgba(255,255,255,${0.5 * p.spinTimer / CONFIG.SPIN_ACTIVE})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, sy(p.y), CONFIG.SPIN_R, 0, 6.2832); ctx.stroke(); }
+  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, end = START + prog * 6.2832, cyp = sy(p.y);   // 時計回りに伸びる弧
+    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,255,255,${0.75 - 0.35 * prog})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, cyp, CONFIG.SPIN_R, START, end); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.arc(p.x + Math.cos(end) * CONFIG.SPIN_R, cyp + Math.sin(end) * CONFIG.SPIN_R, 4.5, 0, 6.2832); ctx.fill(); ctx.restore(); }   // 先端の明点
   if (p.state === 'dash' && p.dashIfr && slashImgs[2] && slashImgs[2].ok) { const ang = Math.atan2(p.dashVy, p.dashVx), img = slashImgs[2], dh = SLASH_H * 1.3, dw = dh * (img.width / img.height); ctx.save(); ctx.translate(p.x, sy(p.y)); ctx.rotate(ang - Math.PI); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore(); }   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ)
   else if (p.state === 'dash' && !p.dashIfr) { const img = sprites[spriteKey()]; if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height), fy = sy(p.y) + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC; ctx.save(); ctx.globalAlpha = 0.22; for (const k of [1, 2]) ctx.drawImage(img, p.x - p.dashVx * 0.012 * k - dw / 2, fy, dw, dh); ctx.restore(); } }   // 疾駆=ただの移動＝残像のみ(攻撃/ダメージ無し)
   if (skillMod() && Object.values(meta.slots).some(id => LOCKON_SKILLS.has(id))) { const t = lockTarget(); if (t) {   // ロックオンマーカー：スキル修飾(Space/LB)押下中＝ロックオン系スキルを撃とうとしてる時だけ表示
