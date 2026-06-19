@@ -291,7 +291,7 @@ function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(meta))
 let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, apShards: 0, heartsBonus: 0, apBonus: 0,
-  unlocked: ['dash', 'shun', 'tensho', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'dash', A: 'kenpa', S: 'shun', D: 'tensho' },
+  unlocked: ['dash', 'shun', 'tensho', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'dash', A: 'spin', S: 'shun', D: 'tensho' },
   ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
 for (const id of ['dash', 'shun', 'tensho']) if (!meta.unlocked.includes(id)) meta.unlocked.push(id);   // 突撃/瞬影/天衝は既存セーブにも解放
@@ -299,6 +299,7 @@ meta.unlocked = meta.unlocked.filter(id => id !== 'shikku');                    
 for (const d in meta.slots) if (meta.slots[d] === 'shikku') meta.slots[d] = 'kenpa';              // 旧セーブで疾駆が枠に入ってたら戻す
 if (!meta.fixShun) { meta.slots.S = 'shun'; meta.fixShun = true; saveMeta(); }                    // 瞬影をS枠へ(検証用・1回だけ)
 if (!meta.fixTensho) { meta.slots.D = 'tensho'; meta.fixTensho = true; saveMeta(); }              // 天衝をD枠へ(検証用・1回だけ)
+if (!meta.fixSpinA) { meta.slots.A = 'spin'; meta.fixSpinA = true; saveMeta(); }                  // 回転斬りをA枠へ(検証用・1回だけ)＝新スキル4種を全部試せる配置に
 meta.unlocked = meta.unlocked.filter(id => id !== 'bomb');                                        // ポゴ爆弾は専用ボタンM(チャージ式)へ移行＝枠スキルから除去
 for (const d in meta.slots) if (meta.slots[d] === 'bomb') meta.slots[d] = 'spin';                 // 旧セーブで爆弾が枠に入ってたら戻す
 if (!meta.fixDashW) { for (const d in meta.slots) if (meta.slots[d] === 'dash') meta.slots[d] = 'mayu'; meta.slots.W = 'dash'; meta.fixDashW = true; saveMeta(); }   // ロックオン突撃をW枠へ確実に(既存セーブで枠落ちしてた不具合の修正・1回だけ)
