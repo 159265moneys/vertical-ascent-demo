@@ -47,7 +47,7 @@ const CONFIG = {
   SHIKKU_AP: 0, SHIKKU_SPEED: 1400, SHIKKU_ACTIVE: 0.15, SHIKKU_CD: 0.42,   // 疾駆：HK素マント式の水平ダッシュ(向き方向・固定距離≈210px・無敵なし・ダメージなし・CT制・APは無料)。無敵は将来チャーム/強化で
   // ポゴ爆弾(専用ボタンM・チャージ式)：一瞬で離す=真下に落とす／長押しで前方ロブの飛距離up→敵接触/自攻撃(ポゴ等)/導火線で起爆→AoE＋爆心の逆へ吹き飛ばし(真下起爆=大上昇)
   BOMB_AP: 2, BOMB_CD: 0.5, BOMB_R: 10, BOMB_GRAV: 1700, BOMB_FUSE: 1.5,
-  BOMB_CHARGE_MIN: 0.06, BOMB_CHARGE_MAX: 0.40, BOMB_VX_MAX: 380, BOMB_VY_ARC: 230,   // 押下<MIN=真下／MINからMAXまで飛距離(前方)を上げる(シビアに短め)
+  BOMB_CHARGE_MIN: 0.16, BOMB_CHARGE_MAX: 0.42, BOMB_VX_MAX: 380, BOMB_VY_ARC: 230,   // 押下<MIN=真下(普通のタップは全部ドロップ)／MIN〜MAXで前方の飛距離up。要"溜め"の手応え
   BOMB_RADIUS: 88, BOMB_MULT: 2.2, BOMB_LAUNCH: 1680, BOMB_LAUNCH_R: 124, BOMB_IFRAME: 0.12, BOMB_SHAKE: 9, BOMB_EXP_T: 0.32,   // BOMB_LAUNCH=吹き飛ばし(上下左右)の強さ(基準1400の1.2倍)
   UNLOCK_SP: 10,
   // --- チャーム ---
@@ -575,6 +575,7 @@ function update(dt) {
     b.t += dt; b.vy += CONFIG.BOMB_GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt;
     const wl = wallL(b.y) + b.r, wr = wallR(b.y) - b.r;
     if (b.x < wl) { b.x = wl; b.vx = Math.abs(b.vx) * 0.5; } if (b.x > wr) { b.x = wr; b.vx = -Math.abs(b.vx) * 0.5; }
+    if (b.y > 0) { b.y = 0; b.vy = 0; b.vx *= 0.7; }   // 床(y=0)で静止＝地上での単押しドロップが地面下に消えない
     let boom = b.t >= CONFIG.BOMB_FUSE;
     if (!boom) for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && overlap(b.x, b.y, b.r * 2, b.r * 2, e.x, e.y, e.w, e.h)) { boom = true; break; }
     if (!boom) {   // 自分の攻撃で起爆(ポゴで真下を起爆→大上昇が主用途)
@@ -706,6 +707,7 @@ function spriteKey() {
   let act = 'idle';
   if (p.state === 'fallStun') act = 'fall';
   else if (p.state === 'cling') act = 'cling';
+  else if (p.state === 'dash') act = 'run';   // 疾駆/突撃中は地上横移動(走り)のスプライト
   else if (p.pogoTimer > 0) act = 'pogo';
   else if (p.upTimer > 0) act = 'up';
   else if (p.nailTimer > 0) act = 'atk';
