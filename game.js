@@ -338,13 +338,14 @@ function damage(q, knockY, knockX) {
 }
 
 function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
-function spawnCuts(x, y, baseAng) {   // 切りつけ方向に沿った華やかな斬撃線。主線(長)＋直交アクセント(短)＋半透明レイヤーで立体に
+function spawnCuts(x, y, baseAng) {   // 切りつけ方向に沿った華やかな斬撃線。主線(長)＋概ね直交の2本セット＋半透明レイヤーで立体に
   const add = (ang, len, alpha) => cuts.push({ x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8, dx: Math.cos(ang), dy: Math.sin(ang), len, life: 0.10 + Math.random() * 0.08, alpha });
-  const t = () => (Math.random() - 0.5) * 0.07, cross = baseAng + Math.PI / 2;   // t=±約2度のゆらぎ／cross=切りつけと直交
-  add(baseAng + t(), 280 + Math.random() * 90, 1);                                   // 主線：切りつけ方向に長い実線(約4倍)
-  add(cross + t(), 66 + Math.random() * 55, 0.95); add(cross + t(), 58 + Math.random() * 55, 0.9);   // 直交アクセント2本(短・実線)＝主線とは重ならない向き
-  for (let i = 0; i < 2; i++) add(baseAng + t(), 240 + Math.random() * 120, 0.65);   // 立体：主線方向に角度/長さを少しズラした半透明を重ね
-  add(cross + t(), 60 + Math.random() * 50, 0.55);                                    // 直交側にも薄く1本
+  const t = () => (Math.random() - 0.5) * 0.07;                                       // 主線のゆらぎ±約2度
+  const cr = () => baseAng + Math.PI / 2 + (Math.random() - 0.5) * 0.8;               // 概ね直交＋ランダム(±約23度)
+  add(baseAng + t(), 280 + Math.random() * 90, 0.7);                                  // 主線：切りつけ方向に長い(約4倍)。全体70%
+  add(cr(), 66 + Math.random() * 55, 0.66); add(cr(), 58 + Math.random() * 55, 0.63); // 概ね直交の2本セット(短)
+  for (let i = 0; i < 2; i++) add(baseAng + t(), 240 + Math.random() * 120, 0.32);    // 立体：主線方向の薄い重ね(さらに70%≒49%)
+  add(cr(), 60 + Math.random() * 50, 0.27);                                           // 直交側の薄い重ね
 }
 function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
