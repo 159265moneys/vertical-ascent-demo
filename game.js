@@ -45,7 +45,8 @@ const CONFIG = {
   TRI_AP: 2, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
   DASH_AP: 1, DASH_RANGE: 300, DASH_ACTIVE: 0.16, DASH_CD: 0.26, DASH_MULT: 1.5, DASH_SPEED_MAX: 1600, DASH_FWD: 160,  // ロックオン突撃斬り(接着剤技)：AP/索敵範囲/突進尺/CT/威力/最大速/無索敵時の前方距離
   SHIKKU_AP: 0, SHIKKU_SPEED: 1400, SHIKKU_ACTIVE: 0.15, SHIKKU_CD: 0.42,   // 疾駆：HK素マント式の水平ダッシュ(向き方向・固定距離≈210px・無敵なし・ダメージなし・CT制・APは無料)。無敵は将来チャーム/強化で
-  SHUN_AP: 2, SHUN_CD: 0.30, SHUN_DUR: 0.12, SHUN_LUNGE: 900, SHUN_REACH: 72, SHUN_H: 76, SHUN_MULT: 1.6, SHUN_BLINK_IFR: 0.14,   // 瞬影：向き方向へ踏み込み斬り→当てた敵の真上(ポゴ範囲)に瞬間移動。突撃とは別物・打ち上げ無し・外しても通常消費
+  SHUN_AP: 2, SHUN_CD: 0.30, SHUN_DUR: 0.12, SHUN_LUNGE: 900, SHUN_REACH: 72, SHUN_H: 76, SHUN_MULT: 1.6, SHUN_BLINK_IFR: 0.14, SHUN_VANISH: 0.12,   // 瞬影：踏み込み斬り→当てた敵の真上(ポゴ範囲)に瞬間移動。SHUN_VANISH=当てた後"消えてる"時間(早すぎ防止の溜め)
+  RECLING_LOCK: 0.20,   // 壁キック直後の再しがみつき禁止＋蹴った壁への入力を弱める時間＝同じ壁へ戻る時に外へ膨らむ(小型敵を乗り越える)
   // ポゴ爆弾(専用ボタンM・チャージ式)：一瞬で離す=真下に落とす／長押しで前方ロブの飛距離up→敵接触/自攻撃(ポゴ等)/導火線で起爆→AoE＋爆心の逆へ吹き飛ばし(真下起爆=大上昇)
   BOMB_AP: 2, BOMB_CD: 0.5, BOMB_R: 10, BOMB_GRAV: 1700, BOMB_FUSE: 1.5,
   BOMB_CHARGE_MIN: 0.16, BOMB_CHARGE_MAX: 0.42, BOMB_VX_MAX: 380, BOMB_VY_ARC: 230,   // 押下<MIN=真下(普通のタップは全部ドロップ)／MIN〜MAXで前方の飛距離up。要"溜め"の手応え
@@ -276,7 +277,7 @@ function drawTint(img, dx, dy, dw, dh, style) {
   ctx.drawImage(_tintCv, dx, dy, dw, dh);
 }
 
-let player, cameraY, maxHeight, enemies, projectiles, bombs, explosions, platforms, sparks, spawnTopY, bandIndex, bossNextH, hitStop, shake, hp0flash;
+let player, cameraY, maxHeight, enemies, projectiles, bombs, explosions, platforms, sparks, cuts, spawnTopY, bandIndex, bossNextH, hitStop, shake, hp0flash;
 
 // 恒久層（localStorage）：金・SP・ベスト高度は reset() で消えない＝2層セーブの恒久側
 const META_KEY = 'vertical_ascent_meta';
@@ -309,11 +310,11 @@ function reset() {
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
-    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, shikkuCd: 0, shunCd: 0, shunT: 0, shunHit: false, bombCd: 0, bombCharging: false, bombCharge: 0, jumpHeld: false,
+    spinTimer: 0, spinCd: 0, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, shikkuCd: 0, shunCd: 0, shunT: 0, shunHit: false, shunVanish: 0, bombCd: 0, bombCharging: false, bombCharge: 0, jumpHeld: false, reclingLock: 0,
     hpQ: maxQ(), ap: maxAP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
-  enemies = []; projectiles = []; bombs = []; explosions = []; platforms = []; sparks = []; hitStop = 0;
+  enemies = []; projectiles = []; bombs = []; explosions = []; platforms = []; sparks = []; cuts = []; hitStop = 0;
   spawnTopY = -260; bandIndex = 0; bossNextH = CONFIG.BOSS_EVERY; shake = 0; hp0flash = 0; paused = false;
   if (SANDBOX) initSandbox();
 }
@@ -337,7 +338,9 @@ function damage(q, knockY, knockX) {
 }
 
 function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
-function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.12; hitStop = Math.max(hitStop, 0.045); shake = Math.max(shake, 5); spawnSparks(e.x, e.y); player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
+function spawnCuts(x, y, n) { for (let i = 0; i < n; i++) { const a = Math.random() * 6.2832; cuts.push({ x: x + (Math.random() - 0.5) * 26, y: y + (Math.random() - 0.5) * 26, dx: Math.cos(a), dy: Math.sin(a), len: 16 + Math.random() * 30, life: 0.09 + Math.random() * 0.07 }); } }   // 白い切れ込み線(切ってる感)
+function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, 3 + Math.floor(Math.random() * 3));   // ザシュッ：強めヒットストップ(威力依存)＋火花＋白い切れ込み3-5本
+  player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
   if (e.hp <= 0 && e.alive && !e.dead && !e.gdeath) { if (e.type === 'boss') e.alive = false; else if (e.type === 'ghost') { e.gdeath = true; e.gdeathT = 0; } else { e.dead = true; e.vy = CONFIG.DEATH_POP; e.vx = (Math.random() - 0.5) * 140; e.rotV = (Math.random() - 0.5) * 11; e.rot = 0; }
   if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
   else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
@@ -426,7 +429,7 @@ function update(dt) {
   const wk = hasCharm('wkick') ? CONFIG.WKICK_BONUS : 1;   // 壁キック延長チャーム
   if (jumpBuffer > 0) jumpBuffer -= dt;
   if (p.iframe > 0) p.iframe -= dt;
-  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','dashCd','shikkuCd','shunCd','bombCd','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
+  for (const k of ['pogoCd','upCd','nailCd','spinCd','kenpaCd','homuraCd','mayuCd','raijinCd','triCd','dashCd','shikkuCd','shunCd','bombCd','reclingLock','pogoTimer','upTimer','nailTimer','spinTimer','mayuTimer']) if (p[k] > 0) p[k] -= dt;
   if (shake > 0) shake = Math.max(0, shake - 60 * dt);
   if (hp0flash > 0) hp0flash -= dt;
   if (p.ap < maxAP()) p.ap = Math.min(maxAP(), p.ap + CONFIG.AP_REGEN * dt);   // 時間でゆっくりAP回復
@@ -435,18 +438,22 @@ function update(dt) {
   const inX = (held.right() ? 1 : 0) - (held.left() ? 1 : 0);
 
   if (p.state === 'shun') {
-    p.shunT -= dt; p.vx = p.facing * CONFIG.SHUN_LUNGE; p.vy = 0;   // 踏み込み(前方へ・無重力)
-    if (!p.shunHit) { const bx = p.x + p.facing * (p.w / 2 + CONFIG.SHUN_REACH / 2);   // 前方の斬りhitbox
+    if (p.shunHit) {   // 当てた後＝"消えてる"溜め(不可視・無敵・静止)→出現
+      p.vx = 0; p.vy = 0; p.shunVanish -= dt; p.iframe = Math.max(p.iframe, p.shunVanish + 0.05);
+      if (p.shunVanish <= 0) { p.state = 'air'; p.coyote = 0; p.airJumps = 0; spawnSparks(p.x, p.y); spawnCuts(p.x, p.y, 4); }   // 真上に出現＋出現エフェクト
+    } else {
+      p.shunT -= dt; p.vx = p.facing * CONFIG.SHUN_LUNGE; p.vy = 0;   // 踏み込み(前方へ・無重力)
+      const bx = p.x + p.facing * (p.w / 2 + CONFIG.SHUN_REACH / 2);   // 前方の斬りhitbox
       for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue;
         if (overlap(bx, p.y, CONFIG.SHUN_REACH, CONFIG.SHUN_H, e.x, e.y, e.w, e.h)) {
           hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SHUN_MULT);
-          p.x = e.x; p.y = e.y - (p.h / 2 + CONFIG.POGO_REACH + CONFIG.POGO_H * slashReach / 2);   // 当てた敵の真上(=ポゴ範囲)へ瞬間移動
-          p.vx = 0; p.vy = 0; p.state = 'air'; p.coyote = 0; p.airJumps = 0; p.shunHit = true; p.iframe = Math.max(p.iframe, CONFIG.SHUN_BLINK_IFR); shake = Math.max(shake, 5);
+          p.x = e.x; p.y = e.y - (p.h / 2 + CONFIG.POGO_REACH + CONFIG.POGO_H * slashReach / 2);   // 当てた敵の真上(=ポゴ範囲)へ
+          p.vx = 0; p.vy = 0; p.shunHit = true; p.shunVanish = CONFIG.SHUN_VANISH; p.iframe = Math.max(p.iframe, CONFIG.SHUN_VANISH + CONFIG.SHUN_BLINK_IFR); shake = Math.max(shake, 6);
           break;
         }
       }
+      if (!p.shunHit && p.shunT <= 0) { p.state = 'air'; p.vx = p.facing * CONFIG.SHUN_LUNGE * 0.3; }   // 空振り終了(余韻の慣性)
     }
-    if (p.state === 'shun' && p.shunT <= 0) { p.state = 'air'; p.vx = p.facing * CONFIG.SHUN_LUNGE * 0.3; }   // 空振り終了(余韻の慣性)
   } else if (p.state === 'dash') {
     p.dashTimer -= dt;
     p.vx = p.dashVx; p.vy = p.dashVy; if (p.dashIfr) p.iframe = Math.max(p.iframe, 0.06);   // 突進中＝指定速度/無重力。無敵は突撃のみ(疾駆=無敵なし)
@@ -461,17 +468,19 @@ function update(dt) {
     const ny = (held.down() ? 1 : 0) - (held.up() ? 1 : 0);   // W/Sで壁を上下に微移動
     p.vy = over > 0 ? Math.min(CONFIG.CLING_SLIDE_MAX, over * CONFIG.CLING_SLIDE_ACCEL) : ny * CONFIG.CLING_NUDGE_V;
     const grip = (hasCharm('grip') && p.clingHold < CONFIG.CLING_GRIP_TIME) || (p.clingWall < 0 && (keys['KeyA'] || pad.rawLeft)) || (p.clingWall > 0 && (keys['KeyD'] || pad.rawRight));   // 生キー/スティック＝スキル中でも壁を掴み続ける／吸着チャーム=掴み時間内は無入力で張り付き
-    if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; p.jumpHeld = true; }
+    if (jumpBuffer > 0) { const dir = -p.clingWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.state = 'air'; p.clingWall = 0; p.coyote = 0; jumpBuffer = 0; p.jumpHeld = true; p.reclingLock = CONFIG.RECLING_LOCK; }
     else if (!grip) { p.state = 'air'; p.coyote = CONFIG.COYOTE; p.clingWall = 0; }
   } else {
     if (p.coyote > 0) p.coyote -= dt;
-    if (inX !== 0) { const turning = inX * p.vx < 0; p.vx += inX * CONFIG.AIR_ACCEL * (turning ? CONFIG.AIR_TURN_MULT : 1) * dt; p.facing = inX; }   // 逆向き入力(方向転換)中は加速増し＝ヌルヌル切り返し
+    if (inX !== 0) { const turning = inX * p.vx < 0; let acc = CONFIG.AIR_ACCEL * (turning ? CONFIG.AIR_TURN_MULT : 1);
+      if (p.reclingLock > 0 && inX === p.lastWall) acc *= 0.12;   // 壁キック直後、蹴った壁へ戻る入力は弱める＝外へ膨らんで小型敵を乗り越える
+      p.vx += inX * acc * dt; p.facing = inX; }   // 逆向き入力(方向転換)中は加速増し＝ヌルヌル切り返し
     else { const s = Math.sign(p.vx); p.vx -= s * CONFIG.AIR_FRICTION * dt; if (Math.sign(p.vx) !== s) p.vx = 0; }
     p.vx = Math.max(-CONFIG.MAX_AIR_X, Math.min(CONFIG.MAX_AIR_X, p.vx));
     p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL);
     if (jumpBuffer > 0) {
       if (p.grounded) { p.vy = CONFIG.GROUND_JUMP_VY; p.grounded = false; jumpBuffer = 0; p.jumpHeld = true; }
-      else if (p.coyote > 0 && p.lastWall !== 0) { const dir = -p.lastWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.coyote = 0; jumpBuffer = 0; p.jumpHeld = true; }
+      else if (p.coyote > 0 && p.lastWall !== 0) { const dir = -p.lastWall; p.vx = CONFIG.WALLKICK_VX * dir * wk; p.vy = CONFIG.WALLKICK_VY * wk; p.facing = dir; p.coyote = 0; jumpBuffer = 0; p.jumpHeld = true; p.reclingLock = CONFIG.RECLING_LOCK; }
       else if (hasCharm('djump') && p.airJumps < 1) { p.vy = CONFIG.GROUND_JUMP_VY * 0.92; p.airJumps++; jumpBuffer = 0; p.jumpHeld = true; }   // 二段ジャンプ
     }
   }
@@ -497,7 +506,7 @@ function update(dt) {
   else if (p.x + p.w / 2 >= wr) { p.x = wr - p.w / 2; side = 1; }
   if (side !== 0 && p.state === 'air') {
     const toward = (side < 0 && (keys['KeyA'] || pad.rawLeft)) || (side > 0 && (keys['KeyD'] || pad.rawRight));
-    if (toward) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }
+    if (toward && p.reclingLock <= 0) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }   // 壁キック直後(reclingLock中)は同じ壁に即再しがみつき不可＝外へ膨らむ
     else p.vx = 0;
   }
   if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; p.airJumps = 0; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
@@ -613,6 +622,7 @@ function update(dt) {
   bombs = bombs.filter(b => b.live); explosions = explosions.filter(ex => ex.t < CONFIG.BOMB_EXP_T);
   for (const sp of sparks) { sp.life -= dt; sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.vy += 700 * dt; sp.vx *= 0.92; }
   sparks = sparks.filter(sp => sp.life > 0);
+  for (const c of cuts) c.life -= dt; cuts = cuts.filter(c => c.life > 0);
   for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
 
   const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (!SANDBOX && maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
@@ -756,6 +766,7 @@ function drawSlash(cx, cy, prog, mode) {
 }
 function drawPlayer() {
   const p = player, x = p.x, y = sy(p.y);
+  if (p.state === 'shun' && p.shunHit) return;   // 瞬影の"消えてる"間は描画しない
   if (p.iframe > 0 && Math.floor(p.iframe * 20) % 2 === 0) return;
   const img = sprites[spriteKey()];
   if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height); const dx = p.state === 'cling' ? x - p.clingWall * CONFIG.CLING_DRAW_OFF : x; ctx.drawImage(img, dx - dw / 2, y + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC, dw, dh); }   // 足基準接地／しがみつきは壁から離す／左右はスプライト内包
@@ -789,6 +800,7 @@ function render() {
   }
   drawPlayer();
   if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const a = Math.min(1, sp.life * 6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } ctx.restore(); }   // 着弾火花
+  if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; for (const c of cuts) { const a = Math.min(1, c.life / 0.08), cy = sy(c.y), hx = c.dx * c.len / 2, hy = c.dy * c.len / 2; ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 2.5 * a + 0.6; ctx.beginPath(); ctx.moveTo(c.x - hx, cy - hy); ctx.lineTo(c.x + hx, cy + hy); ctx.stroke(); } ctx.restore(); }   // 白い切れ込み(切ってる感)
   const p = player;
   if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE, 'down');            // 下＝凸を下へ
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
