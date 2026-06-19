@@ -39,7 +39,7 @@ const CONFIG = {
   // --- スキル②（Ctrl+WASD の4枠）---
   KENPA_AP: 1, KENPA_MULT: 1.4, KENPA_V: 640, KENPA_CD: 0.22, KENPA_R: 9,          // A：剣波（速い弾・軽）
   HOMURA_AP: 3, HOMURA_MULT: 1.8, HOMURA_V: 380, HOMURA_CD: 0.5, HOMURA_R: 16, HOMURA_PIERCE: 2, // D：焔（遅い大弾・貫通・重）
-  SPIN_AP: 2, SPIN_MULT: 1.2, SPIN_R: 96, SPIN_ACTIVE: 0.18, SPIN_CD: 0.40,        // S：回転斬り（周囲AoE）
+  SPIN_AP: 2, SPIN_MULT: 1.2, SPIN_R: 96, SPIN_ACTIVE: 0.14, SPIN_CD: 0.40,        // S：回転斬り（周囲AoE・時計回り掃引）
   MAYU_AP: 2, MAYU_DUR: 4.0, MAYU_REDUCE: 0.5, MAYU_CD: 6.0,                       // W：守護の繭（被ダメ減）
   RAIJIN_AP: 2, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
   TRI_AP: 2, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
@@ -749,6 +749,7 @@ function drawEnemy(e) {
 }
 function spriteKey() {
   const p = player;
+  if (p.spinTimer > 0) return ['up_r', 'atk_r', 'pogo_r', 'atk_l'][Math.floor((1 - p.spinTimer / CONFIG.SPIN_ACTIVE) * 4) % 4];   // 回転斬り＝掃引に合わせ上→右→ポゴ→左でスプライト回す
   let act = 'idle';
   if (p.state === 'fallStun') act = 'fall';
   else if (p.state === 'cling') act = 'cling';
