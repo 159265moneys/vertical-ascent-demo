@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>スキル検証サンドボックス</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0e13;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#9aa4b2;overflow:hidden}
+  #wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+  canvas{background:#0b0e13;height:min(92vh,96vw);width:min(92vh,96vw);box-shadow:0 0 40px #0008;border-radius:6px;image-rendering:auto}
+  #hint{font-size:12px;opacity:.6;text-align:center;max-width:80vw;line-height:1.5}
+  b{color:#cdd6e2}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="760" height="760"></canvas>
+  <div id="hint"><b>スキル検証用サンドボックス</b>（壁付きの広い箱＋ザコ常時4体）。本編と同一エンジン＝ここで詰めた挙動はそのまま本編に乗る。<br>
+  A/D 移動 ・ <b>右Shift</b> 壁キック/ジャンプ ・ A/D長押しでしがみつき ・ Enter 攻撃(↓ポゴ/↑上/前ネイル) ・ <b>Space+W/A/S/D スキル4枠</b> ・ <b>E ポゴ爆弾</b> ・ <b>H 店</b>(スキル/チャーム割当) ・ R リセット ・ P ポーズ ・ <b>I 無敵</b> ・ K ボス ・ L 射程切替 ・ J 突撃距離×1.5<br>
+  <b>🎮パッド</b>：左スティック 移動 ・ A ジャンプ ・ X 攻撃 ・ RT 爆弾 ・ LB+Y/X/A/B スキル ・ Start ポーズ</div>
+</div>
+<script>window.SANDBOX = true;</script>
+<script src="game.js?v=65"></script>
+</body>
+</html>
