@@ -12,14 +12,15 @@ const CONFIG = {
 
   GRAVITY: 2600,
   MAX_FALL: 1500,
-  AIR_ACCEL: 2600, MAX_AIR_X: 340, AIR_FRICTION: 1500,
+  AIR_ACCEL: 2600, MAX_AIR_X: 340, AIR_FRICTION: 1500, AIR_TURN_MULT: 2.4,   // AIR_TURN_MULT=逆方向入力時の加速倍率(空中方向転換をヌルヌルに)
 
   WALLKICK_VX: 520, WALLKICK_VY: -1320,
   GROUND_JUMP_VY: -1320,
   COYOTE: 0.09, JUMP_BUFFER: 0.10,
   CLING_GRIP_TIME: 3.0,
   CLING_SLIDE_MAX: 300, CLING_SLIDE_ACCEL: 350, CLING_NUDGE_V: 130,   // CLING_NUDGE_V=しがみつき中にW/Sで壁を上下へ微移動する速度
-  WALLPOGO_VX: 460, WALLPOGO_VY: 340,   // 壁攻撃(ネイルが壁に届く)=横ポゴ：壁から離れる横速度＋ちょい上(移動技)
+  WALLPOGO_VX: 320, WALLPOGO_VY: 1320,   // 壁攻撃=横ポゴ：上昇力は壁キックと同じ(1320)＋横は控えめ=角度を急(上向き)に。移動技
+  ENEMY_KB: 620,   // 敵に体当たりした時の確定ノックバック速度(乗れない様に=ダメ+必ず弾く)
 
   // --- 攻撃（基礎攻撃力=1.0 が原器）---
   ATK_BASE: 1.0,
@@ -94,6 +95,7 @@ const SKILL_META = {
   dash: { name: 'ロックオン突撃', ap: 'DASH_AP', cd: 'dashCd', cdMax: 'DASH_CD' },
 };
 const SKILL_IDS = Object.keys(SKILL_META);
+const LOCKON_SKILLS = new Set(['dash']);   // ロックオンマーカーを出すスキル(今は突撃のみ。将来の追尾弾等はここに追加)
 // チャーム（金で購入・ノッチ枠内で装着）。効果は各所が hasCharm() を参照
 const CHARMS = [
   { id: 'djump', name: '二段ジャンプ', notch: 2, gold: 30 },
@@ -172,6 +174,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyG') player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK);  // デバッグ：鍵+1
   if (e.code === 'KeyH') { inHideout = true; hideoutCursor = 1; }                    // デバッグ：横穴を直接開く(鍵/しがみつき不要)
   if (e.code === 'KeyL') { const st = [1, 1.2, 1.5, 2]; slashReach = st[(st.indexOf(slashReach) + 1) % st.length]; }   // デバッグ：斬撃の射程倍率を巡回(1→1.2→1.5→2)
+  if (e.code === 'KeyJ') dashMul = dashMul === 1 ? 1.5 : 1;   // デバッグ：突撃の飛距離 1↔1.5 切替(スキルUP強化版の確認)
   if (e.code === 'KeyQ' && player.state === 'cling' && player.keys > 0) { player.keys--; inHideout = true; hideoutCursor = 1; saveMeta(); }  // 横穴へ(Eはポゴ爆弾に使うのでQへ移設)
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyE' && player && player.bombCharging) { throwBomb(player.bombCharge); player.bombCharging = false; } });   // 離した瞬間に投擲(押下時間で飛距離)
@@ -214,6 +217,7 @@ SPRITE_KEYS.forEach(s => { const img = new Image(); img.ok = false; img.onload =
 // 斬撃エフェクト：5コマのモーフ(細→開く→ピーク→細る→分裂)を「上から下へクリップで伸ばしながら」出す＝立体感＋軌道描き
 const SLASH_FRAMES = 5, SLASH_H = 120, SLASH_OFF = 40;    // OFF=狙い方向への前出し量
 let slashReach = 1;   // 射程倍率：攻撃方向(ローカルx)へ見た目も当たり判定も伸ばす。1=基準。Longnail等の射程UP時に上げるだけ(再生成不要)
+let dashMul = 1;   // 突撃の飛距離倍率(索敵範囲/前方距離/最大速)。スキルUPで上げる想定。デバッグJで 1↔1.5 切替
 const slashImgs = [];
 for (let i = 0; i < SLASH_FRAMES; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/fx/slash_${i}.png?v=${SPRITE_VER}`; slashImgs.push(img); }
 // 暗殺者の突撃斬撃：ソニックブーム5コマ(小→ピーク→減衰)。跳躍の進行で送る
@@ -299,13 +303,15 @@ function reset() {
   spawnTopY = -260; bandIndex = 0; bossNextH = CONFIG.BOSS_EVERY; shake = 0; hp0flash = 0; paused = false;
 }
 
-function damage(q, knockY) {
+function damage(q, knockY, knockX) {
   if (invincible || player.iframe > 0 || player.state === 'fallStun' || q <= 0) return;   // 無敵=デバッグ
   if (hasCharm('def')) q = Math.max(0, q - CONFIG.DEF_REDUCE);              // 防御チャーム
   if (player.mayuTimer > 0) q = Math.floor(q * (1 - CONFIG.MAYU_REDUCE));   // 守護の繭：被ダメ減
   if (q <= 0) { player.iframe = CONFIG.IFRAME * 0.4; return; }
   player.hpQ -= q; player.iframe = CONFIG.IFRAME;
+  if (player.state === 'cling') { player.state = 'air'; player.clingWall = 0; }   // 被弾で壁から剥がれる(ノックバックを効かせる)
   if (knockY) player.vy = knockY;
+  if (knockX) player.vx = knockX;   // 被ダメ時のノックバック(横)。敵接触は方向KBをここで適用＝iframe尊重で1ヒット1回・的に乗れない
   shake = Math.max(shake, CONFIG.SHAKE_HIT);
   if (player.hpQ <= 0) {
     player.hpQ = 0; player.state = 'fallStun'; player.clingWall = 0;
@@ -331,14 +337,14 @@ function castRaijin() { const p = player; if (p.raijinCd > 0 || Math.floor(p.ap)
 function castTri() { const p = player; if (p.triCd > 0 || Math.floor(p.ap) < CONFIG.TRI_AP) return; p.ap -= CONFIG.TRI_AP; p.triCd = CONFIG.TRI_CD;
   for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT, pierce: 0 }); }
 function lockTarget() {   // 突進の自動ロックオン対象＝索敵範囲内で最寄りの生きてる敵(マーカーとcastDashで共有)
-  const p = player; let tgt = null, best = CONFIG.DASH_RANGE;
+  const p = player; let tgt = null, best = CONFIG.DASH_RANGE * dashMul;   // dashMul=飛距離倍率(スキルUP/デバッグ)
   for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < best) { best = d; tgt = e; } }
   return tgt;
 }
 function castDash() { const p = player; if (p.dashCd > 0 || Math.floor(p.ap) < CONFIG.DASH_AP) return;
   const tgt = lockTarget();
-  let dx = tgt ? tgt.x - p.x : p.facing * CONFIG.DASH_FWD, dy = tgt ? tgt.y - p.y : 0;
-  const dist = Math.hypot(dx, dy) || 1, speed = Math.min(CONFIG.DASH_SPEED_MAX, Math.max(dist, 60) / CONFIG.DASH_ACTIVE);   // 突進尺で到達する速度(上限)
+  let dx = tgt ? tgt.x - p.x : p.facing * CONFIG.DASH_FWD * dashMul, dy = tgt ? tgt.y - p.y : 0;
+  const dist = Math.hypot(dx, dy) || 1, speed = Math.min(CONFIG.DASH_SPEED_MAX * dashMul, Math.max(dist, 60) / CONFIG.DASH_ACTIVE);   // 突進尺で到達する速度(上限・倍率込み)
   p.ap -= CONFIG.DASH_AP; p.dashCd = CONFIG.DASH_CD;
   p.dashVx = dx / dist * speed; p.dashVy = dy / dist * speed; p.dashTimer = CONFIG.DASH_ACTIVE; p.dashHit = new Set(); p.facing = dx < 0 ? -1 : 1; p.state = 'dash'; p.clingWall = 0; }
 function bombChargeK(charge) { return Math.min(1, Math.max(0, (charge - CONFIG.BOMB_CHARGE_MIN) / (CONFIG.BOMB_CHARGE_MAX - CONFIG.BOMB_CHARGE_MIN))); }   // 押下時間→0..1(MIN以下=0=真下)
@@ -426,7 +432,7 @@ function update(dt) {
     else if (!grip) { p.state = 'air'; p.coyote = CONFIG.COYOTE; p.clingWall = 0; }
   } else {
     if (p.coyote > 0) p.coyote -= dt;
-    if (inX !== 0) { p.vx += inX * CONFIG.AIR_ACCEL * dt; p.facing = inX; }
+    if (inX !== 0) { const turning = inX * p.vx < 0; p.vx += inX * CONFIG.AIR_ACCEL * (turning ? CONFIG.AIR_TURN_MULT : 1) * dt; p.facing = inX; }   // 逆向き入力(方向転換)中は加速増し＝ヌルヌル切り返し
     else { const s = Math.sign(p.vx); p.vx -= s * CONFIG.AIR_FRICTION * dt; if (Math.sign(p.vx) !== s) p.vx = 0; }
     p.vx = Math.max(-CONFIG.MAX_AIR_X, Math.min(CONFIG.MAX_AIR_X, p.vx));
     p.vy = Math.min(p.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL);
@@ -441,8 +447,8 @@ function update(dt) {
   if (p.state === 'air' || p.state === 'cling') {
     if (held.down() && (attackEdge || keys['Enter'] || keys['NumpadEnter']) && p.pogoCd <= 0 && p.pogoTimer <= 0) { p.pogoTimer = CONFIG.POGO_ACTIVE; p.pogoCd = CONFIG.POGO_COOLDOWN; p.pogoHitThisSwing = false; }
     if (attackEdge && held.up() && p.upCd <= 0 && p.upTimer <= 0) { p.upTimer = CONFIG.UPATK_ACTIVE; p.upCd = CONFIG.UPATK_COOLDOWN; p.upHitThisSwing = false; }
-    if (attackEdge && !held.up() && !held.down() && p.nailCd <= 0 && p.nailTimer <= 0) { p.nailTimer = CONFIG.NAIL_ACTIVE; p.nailCd = CONFIG.NAIL_COOLDOWN; p.nailHitThisSwing = false;
-      if (p.state === 'air') { const nb = nailBox(), lead = nb.x + p.facing * nb.w / 2;   // 壁攻撃=横ポゴ：ネイルが壁に届いたら壁を蹴って跳ね返る(ちょい上+横・移動技)
+    if (p.state === 'air' && attackEdge && !held.up() && !held.down() && p.nailCd <= 0 && p.nailTimer <= 0) { p.nailTimer = CONFIG.NAIL_ACTIVE; p.nailCd = CONFIG.NAIL_COOLDOWN; p.nailHitThisSwing = false;   // 前ネイルは空中のみ＝しがみつき中の背中攻撃を無効化
+      { const nb = nailBox(), lead = nb.x + p.facing * nb.w / 2;   // 壁攻撃=横ポゴ：ネイルが壁に届いたら壁を蹴って跳ね返る(ちょい上+横・移動技)
         if ((p.facing > 0 && lead >= wallR(p.y)) || (p.facing < 0 && lead <= wallL(p.y))) { p.vx = -p.facing * CONFIG.WALLPOGO_VX; p.vy = Math.min(p.vy, -CONFIG.WALLPOGO_VY); p.facing = -p.facing; p.coyote = 0; p.airJumps = 0; shake = Math.max(shake, 4); spawnSparks(lead, p.y); } } }
     for (const dir of ['W','A','S','D']) if (skillEdge[dir]) { const id = meta.slots[dir]; if (CASTERS[id]) CASTERS[id](); }
   }
@@ -521,7 +527,7 @@ function update(dt) {
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
     if (e.alive && p.state === 'dash' && p.dashHit && !p.dashHit.has(e) && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.DASH_MULT); p.dashHit.add(e); }   // ロックオン突撃：通過した敵を斬る
-    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'crawler' ? CONFIG.DMG_CRAWLER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) damage(dq, -480); if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
+    if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'crawler' ? CONFIG.DMG_CRAWLER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) { const kx = p.x - e.x, ky = p.y - e.y, kd = Math.hypot(kx, ky); const ux = kd > 1 ? kx / kd : 0, uy = kd > 1 ? ky / kd : -1; damage(dq, uy * CONFIG.ENEMY_KB, ux * CONFIG.ENEMY_KB); }   /* 被ダメした時だけ的の逆へ方向KB(damage内でiframe尊重＝1ヒット1回・乗れない)。ポゴ等で被弾しなければ無干渉 */   /* 的に当たったら必ず爆心の逆へ弾く=乗れない(iframe中も弾く)＋ダメージ(iframe尊重) */ if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
   if (p.nailTimer > 0) p.nailHitThisSwing = true;
@@ -749,7 +755,7 @@ function render() {
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ
   if (p.spinTimer > 0) { ctx.strokeStyle = `rgba(255,255,255,${0.5 * p.spinTimer / CONFIG.SPIN_ACTIVE})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, sy(p.y), CONFIG.SPIN_R, 0, 6.2832); ctx.stroke(); }
   if (p.state === 'dash' && slashImgs[2] && slashImgs[2].ok) { const ang = Math.atan2(p.dashVy, p.dashVx), img = slashImgs[2], dh = SLASH_H * 1.3, dw = dh * (img.width / img.height); ctx.save(); ctx.translate(p.x, sy(p.y)); ctx.rotate(ang - Math.PI); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore(); }   // 突撃斬りの白弧(進行方向)
-  if (Object.values(meta.slots).includes('dash')) { const t = lockTarget(); if (t) {   // ロックオンマーカー(白丸＋十字ティック)。突撃が使えると明るく。暗縁取りで白敵でも視認
+  if (skillMod() && Object.values(meta.slots).some(id => LOCKON_SKILLS.has(id))) { const t = lockTarget(); if (t) {   // ロックオンマーカー：スキル修飾(Space/LB)押下中＝ロックオン系スキルを撃とうとしてる時だけ表示
     const rx = t.x, ry = sy(t.y), R = 15, a = (p.dashCd <= 0 && Math.floor(p.ap) >= CONFIG.DASH_AP) ? 0.9 : 0.4;
     const ticks = [[0, -1], [0, 1], [-1, 0], [1, 0]];
     const ring = () => { ctx.beginPath(); ctx.arc(rx, ry, R, 0, 6.2832); ctx.stroke(); for (const [dx, dy] of ticks) { ctx.beginPath(); ctx.moveTo(rx + dx * (R - 3), ry + dy * (R - 3)); ctx.lineTo(rx + dx * (R + 5), ry + dy * (R + 5)); ctx.stroke(); } };
