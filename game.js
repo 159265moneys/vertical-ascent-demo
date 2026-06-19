@@ -141,8 +141,8 @@ function wallL(y) { if (SANDBOX) return 40; const s = segShape(y); return CONFIG
 function wallR(y) { if (SANDBOX) return W - 40; const s = segShape(y); return CONFIG.WALL_R - Math.sin(y * 0.0037 + 2.3) * 22 - Math.sin(y * 0.012 + 0.5) * 10 - s.inset + s.sway; }
 // --- スキル検証サンドボックス：壁付きの広い箱(直線壁＋床y=0＋天井)・カメラ固定・ザコ数匹を維持 ---
 const SBOX = { wl: 40, wr: () => W - 40, ceil: -(H - 120), cam: -(H - 60), count: 4 };
-function sandboxSpawn() { const t = ['crawler', 'floater', 'target', 'crawler', 'floater'][Math.floor(Math.random() * 5)]; const x = SBOX.wl + 50 + Math.random() * (SBOX.wr() - SBOX.wl - 100); const y = SBOX.ceil + 80 + Math.random() * (-SBOX.ceil - 170); enemies.push(makeEnemy(t, x, y)); }
-function initSandbox() { cameraY = SBOX.cam; enemies = []; for (let i = 0; i < SBOX.count; i++) sandboxSpawn(); }
+function sandboxSpawn() { const e = makeEnemy('boss', (SBOX.wl + SBOX.wr()) / 2, SBOX.ceil / 2); e.hp = e.hpMax = 80; enemies.push(e); }   // デモ用：中央に地味に動く(ドリフト+bob)ボス級デカ敵1体。攻撃はSANDBOXでは抑止。倒したら再出現
+function initSandbox() { cameraY = SBOX.cam; enemies = []; sandboxSpawn(); }
 // 高度帯バイオーム（見た目）＝登るほど切替＝段階開示
 const BIOMES = [
   { name: '麓の洞', wall: '#161c26', line: '#2a3547', bgTop: '#0b0e13', bgBottom: '#10151d' },
@@ -623,7 +623,7 @@ function update(dt) {
       e.phase += dt * CONFIG.BOSS_PHASE_SPD;
       e.x = e.baseX + Math.sin(e.phase) * CONFIG.BOSS_DRIFT_X; e.y = e.baseY + Math.sin(e.phase * 0.7) * CONFIG.BOSS_BOB_Y;
       const bwl = wallL(e.y), bwr = wallR(e.y); e.x = Math.max(bwl + e.w / 2, Math.min(bwr - e.w / 2, e.x));
-      if (e.y > cameraY - 80 && e.y < cameraY + H + 80) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { e.mode === 0 ? bossVolley(e) : bossPillars(e); e.mode ^= 1; e.atkCd = CONFIG.BOSS_ATK_CD; } } else { e.atkCd -= dt; if (e.atkCd <= 0) e.windup = CONFIG.BOSS_WINDUP; } }
+      if (!SANDBOX && e.y > cameraY - 80 && e.y < cameraY + H + 80) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { e.mode === 0 ? bossVolley(e) : bossPillars(e); e.mode ^= 1; e.atkCd = CONFIG.BOSS_ATK_CD; } } else { e.atkCd -= dt; if (e.atkCd <= 0) e.windup = CONFIG.BOSS_WINDUP; } }   // サンドボックスでは攻撃せず地味に動くだけ
     }
     else { e.phase += dt * CONFIG.FLOAT_SPEED * 0.6; e.x = e.baseX + Math.sin(e.phase) * CONFIG.ATTACKER_DRIFT_X; const onScr = e.y > cameraY - 40 && e.y < cameraY + H + 40; if (onScr) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { fireAt(e); e.fireCd = CONFIG.ATTACKER_FIRE_CD; } } else { e.fireCd -= dt; if (e.fireCd <= 0) e.windup = CONFIG.TELEGRAPH_LEAD; } } }
 
@@ -687,7 +687,7 @@ function update(dt) {
   for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
 
   const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (!SANDBOX && maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
-  if (SANDBOX) { cameraY = SBOX.cam; const n = enemies.filter(e => e.alive && !e.dead && !e.gdeath).length; if (n < SBOX.count) sandboxSpawn(); }   // カメラ固定＋ザコを常時SBOX.count体に補充
+  if (SANDBOX) { cameraY = SBOX.cam; if (!enemies.some(e => e.alive && !e.dead && !e.gdeath)) sandboxSpawn(); }   // カメラ固定＋ボス級デカ敵が居なくなったら再出現(常時1体)
   else { if (maxHeight / 100 >= bossNextH) { bossNextH += CONFIG.BOSS_EVERY; if (!enemies.some(e => e.type === 'boss' && e.alive)) spawnBoss(); }   // 高度BOSS_EVERY毎にボス
     cameraY += ((p.y - H * CONFIG.CAM_FOLLOW) - cameraY) * Math.min(1, CONFIG.CAM_LERP * dt); }
 }
