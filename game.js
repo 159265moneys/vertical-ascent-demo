@@ -140,9 +140,9 @@ function segShape(y) { const d = -y, i = Math.floor(d / SEG_H), t = (d - i * SEG
 function wallL(y) { if (SANDBOX) return 40; const s = segShape(y); return CONFIG.WALL_L + Math.sin(y * 0.0042) * 22 + Math.sin(y * 0.014 + 1.7) * 10 + s.inset + s.sway; }
 function wallR(y) { if (SANDBOX) return W - 40; const s = segShape(y); return CONFIG.WALL_R - Math.sin(y * 0.0037 + 2.3) * 22 - Math.sin(y * 0.012 + 0.5) * 10 - s.inset + s.sway; }
 // --- スキル検証サンドボックス：壁付きの広い箱(直線壁＋床y=0＋天井)・カメラ固定・ザコ数匹を維持 ---
-const SBOX = { wl: 40, wr: () => W - 40, ceil: -(H - 120), cam: -(H - 60), count: 4 };
-function sandboxSpawn() { const e = makeEnemy('boss', (SBOX.wl + SBOX.wr()) / 2, SBOX.ceil / 2); e.hp = e.hpMax = 80; enemies.push(e); }   // デモ用：中央に地味に動く(ドリフト+bob)ボス級デカ敵1体。攻撃はSANDBOXでは抑止。倒したら再出現
-function initSandbox() { cameraY = SBOX.cam; enemies = []; sandboxSpawn(); }
+const SBOX = { wl: 40, wr: () => W - 40 };   // 縦シャフト：直線の左右壁＋床(y=0)・天井なし・カメラは主人公追従(縦コンボが天井に当たらない)
+function sandboxSpawn() { const e = makeEnemy('boss', (SBOX.wl + SBOX.wr()) / 2, (player ? player.y : 0) - 150); e.hp = e.hpMax = 80; enemies.push(e); }   // デモ用：主人公の少し上にボス級デカ敵1体(地味ドリフト・攻撃抑止)。倒す/画面外で近くに再配置
+function initSandbox() { cameraY = (player ? player.y : 0) - H * CONFIG.CAM_FOLLOW; enemies = []; sandboxSpawn(); }
 // 高度帯バイオーム（見た目）＝登るほど切替＝段階開示
 const BIOMES = [
   { name: '麓の洞', wall: '#161c26', line: '#2a3547', bgTop: '#0b0e13', bgBottom: '#10151d' },
@@ -571,7 +571,6 @@ function update(dt) {
   }
   if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; p.airJumps = 0; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
   else p.grounded = false;
-  if (SANDBOX && p.y < SBOX.ceil) { p.y = SBOX.ceil; if (p.vy < 0) p.vy = 0; }   // 箱の天井で止める
   for (const pl of platforms) { const top = pl.y - pl.h / 2; if (p.state !== 'cling' && p.vy >= 0 && p.x + p.w / 2 > pl.x - pl.w / 2 && p.x - p.w / 2 < pl.x + pl.w / 2 && p.y + p.h / 2 >= top && p.y + p.h / 2 <= top + 22 + p.vy * dt) { p.y = top - p.h / 2; p.vy = 0; p.grounded = true; p.airJumps = 0; } }   // ボスの一時足場に片面着地＝footing
   if (p.grounded && p.state === 'air') p.x += inX * 180 * dt;
 
@@ -687,7 +686,11 @@ function update(dt) {
   for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
 
   const h = Math.max(0, -p.y); if (h > maxHeight) maxHeight = h; if (!SANDBOX && maxHeight > meta.bestHeight) meta.bestHeight = maxHeight;
-  if (SANDBOX) { cameraY = SBOX.cam; if (!enemies.some(e => e.alive && !e.dead && !e.gdeath)) sandboxSpawn(); }   // カメラ固定＋ボス級デカ敵が居なくなったら再出現(常時1体)
+  if (SANDBOX) { cameraY += ((p.y - H * CONFIG.CAM_FOLLOW) - cameraY) * Math.min(1, CONFIG.CAM_LERP * dt);   // 主人公追従カメラ＝縦に登っても端上に張り付かない
+    const boss = enemies.find(e => e.alive && !e.dead && !e.gdeath);
+    if (!boss) sandboxSpawn();
+    else if (boss.y > cameraY + H + 80 || boss.y < cameraY - 220) { boss.x = (SBOX.wl + SBOX.wr()) / 2; boss.y = p.y - 150; boss.baseX = boss.x; boss.baseY = boss.y; }   // 画面外なら主人公の少し上へ戻す(常時1体・近くに)
+  }
   else { if (maxHeight / 100 >= bossNextH) { bossNextH += CONFIG.BOSS_EVERY; if (!enemies.some(e => e.type === 'boss' && e.alive)) spawnBoss(); }   // 高度BOSS_EVERY毎にボス
     cameraY += ((p.y - H * CONFIG.CAM_FOLLOW) - cameraY) * Math.min(1, CONFIG.CAM_LERP * dt); }
 }
@@ -844,7 +847,6 @@ function render() {
   ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
   drawWalls(bio);
   if (sy(0) < H) { ctx.fillStyle = bio.line; ctx.fillRect(wallL(0), sy(0), wallR(0) - wallL(0), H); }
-  if (SANDBOX) { ctx.fillStyle = bio.wall; ctx.fillRect(0, 0, W, sy(SBOX.ceil)); ctx.strokeStyle = bio.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(wallL(0), sy(SBOX.ceil)); ctx.lineTo(wallR(0), sy(SBOX.ceil)); ctx.stroke(); }   // 箱の天井
   for (const e of enemies) { const y = sy(e.y); if (y < -140 || y > H + 140) continue; drawEnemy(e); }
   for (const pl of platforms) { const py = sy(pl.y); if (py < -40 || py > H + 40) continue; const a = Math.min(1, pl.life / 1.2); ctx.fillStyle = `rgba(126,232,192,${0.3 + 0.45 * a})`; roundRect(pl.x - pl.w / 2, py - pl.h / 2, pl.w, pl.h, 5); ctx.fill(); ctx.strokeStyle = `rgba(180,255,230,${0.6 * a})`; ctx.lineWidth = 2; ctx.stroke(); }   // ボスの一時足場(寿命で点滅消失)
   for (const pr of projectiles) { ctx.fillStyle = pr.flame ? '#ffb347' : pr.friendly ? '#cdebff' : '#f6d365'; ctx.beginPath(); ctx.arc(pr.x, sy(pr.y), pr.r, 0, 6.2832); ctx.fill(); }
