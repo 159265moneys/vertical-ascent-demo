@@ -338,8 +338,15 @@ function damage(q, knockY, knockX) {
 }
 
 function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
-function spawnCuts(x, y, n) { for (let i = 0; i < n; i++) { const a = Math.random() * 6.2832; cuts.push({ x: x + (Math.random() - 0.5) * 12, y: y + (Math.random() - 0.5) * 12, dx: Math.cos(a), dy: Math.sin(a), len: 50 + Math.random() * 95, life: 0.09 + Math.random() * 0.07 }); } }   // 白い切れ込み線(切ってる感)：長く細く・中心付近で重なる(HK風)
-function hitEnemy(e, dmg) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, 4 + Math.floor(Math.random() * 3));   // ザシュッ：強めヒットストップ(威力依存)＋火花＋白い切れ込み4-6本(長く細く重なる)
+function spawnCuts(x, y, baseAng) {   // 切りつけ方向に沿った華やかな斬撃線。主線(長)＋直交アクセント(短)＋半透明レイヤーで立体に
+  const add = (ang, len, alpha) => cuts.push({ x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8, dx: Math.cos(ang), dy: Math.sin(ang), len, life: 0.10 + Math.random() * 0.08, alpha });
+  const t = () => (Math.random() - 0.5) * 0.07, cross = baseAng + Math.PI / 2;   // t=±約2度のゆらぎ／cross=切りつけと直交
+  add(baseAng + t(), 280 + Math.random() * 90, 1);                                   // 主線：切りつけ方向に長い実線(約4倍)
+  add(cross + t(), 66 + Math.random() * 55, 0.95); add(cross + t(), 58 + Math.random() * 55, 0.9);   // 直交アクセント2本(短・実線)＝主線とは重ならない向き
+  for (let i = 0; i < 2; i++) add(baseAng + t(), 240 + Math.random() * 120, 0.65);   // 立体：主線方向に角度/長さを少しズラした半透明を重ね
+  add(cross + t(), 60 + Math.random() * 50, 0.55);                                    // 直交側にも薄く1本
+}
+function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
   if (e.hp <= 0 && e.alive && !e.dead && !e.gdeath) { if (e.type === 'boss') e.alive = false; else if (e.type === 'ghost') { e.gdeath = true; e.gdeathT = 0; } else { e.dead = true; e.vy = CONFIG.DEATH_POP; e.vx = (Math.random() - 0.5) * 140; e.rotV = (Math.random() - 0.5) * 11; e.rot = 0; }
   if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
@@ -440,7 +447,7 @@ function update(dt) {
   if (p.state === 'shun') {
     if (p.shunHit) {   // 当てた後＝"消えてる"溜め(不可視・無敵・静止)→出現
       p.vx = 0; p.vy = 0; p.shunVanish -= dt; p.iframe = Math.max(p.iframe, p.shunVanish + 0.05);
-      if (p.shunVanish <= 0) { p.state = 'air'; p.coyote = 0; p.airJumps = 0; spawnSparks(p.x, p.y); spawnCuts(p.x, p.y, 4); }   // 真上に出現＋出現エフェクト
+      if (p.shunVanish <= 0) { p.state = 'air'; p.coyote = 0; p.airJumps = 0; spawnSparks(p.x, p.y); spawnCuts(p.x, p.y, Math.PI / 2); }   // 真上に出現＋出現エフェクト(下向き斬り)
     } else {
       p.shunT -= dt; p.vx = p.facing * CONFIG.SHUN_LUNGE; p.vy = 0;   // 踏み込み(前方へ・無重力)
       const bx = p.x + p.facing * (p.w / 2 + CONFIG.SHUN_REACH / 2);   // 前方の斬りhitbox
@@ -567,10 +574,10 @@ function update(dt) {
     else { e.phase += dt * CONFIG.FLOAT_SPEED * 0.6; e.x = e.baseX + Math.sin(e.phase) * CONFIG.ATTACKER_DRIFT_X; const onScr = e.y > cameraY - 40 && e.y < cameraY + H + 40; if (onScr) { if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { fireAt(e); e.fireCd = CONFIG.ATTACKER_FIRE_CD; } } else { e.fireCd -= dt; if (e.fireCd <= 0) e.windup = CONFIG.TELEGRAPH_LEAD; } } }
 
     { const cwl = wallL(e.y) + e.w / 2, cwr = wallR(e.y) - e.w / 2; if (cwl < cwr) e.x = Math.max(cwl, Math.min(cwr, e.x)); }   // 壁=絶対境界：全敵を壁内にクランプ(落下/ドリフトでも越えさせない)
-    if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }
-    if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT);
+    if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT, Math.PI / 2); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }   // ポゴ=下向き斬り
+    if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT, -Math.PI / 2);   // 上攻撃=上向き斬り
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
-    if (e.alive && p.state === 'dash' && p.dashHit && !p.dashHit.has(e) && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.DASH_MULT); p.dashHit.add(e); }   // ロックオン突撃：通過した敵を斬る
+    if (e.alive && p.state === 'dash' && p.dashHit && !p.dashHit.has(e) && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.DASH_MULT, Math.atan2(p.dashVy, p.dashVx)); p.dashHit.add(e); }   // ロックオン突撃：突進方向に斬る
     if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'crawler' ? CONFIG.DMG_CRAWLER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) { const kx = p.x - e.x, ky = p.y - e.y, kd = Math.hypot(kx, ky); const ux = kd > 1 ? kx / kd : 0, uy = kd > 1 ? ky / kd : -1; damage(dq, uy * CONFIG.ENEMY_KB, ux * CONFIG.ENEMY_KB); }   /* 被ダメした時だけ的の逆へ方向KB(damage内でiframe尊重＝1ヒット1回・乗れない)。ポゴ等で被弾しなければ無干渉 */   /* 的に当たったら必ず爆心の逆へ弾く=乗れない(iframe中も弾く)＋ダメージ(iframe尊重) */ if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
@@ -800,7 +807,7 @@ function render() {
   }
   drawPlayer();
   if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const a = Math.min(1, sp.life * 6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } ctx.restore(); }   // 着弾火花
-  if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; for (const c of cuts) { const a = Math.min(1, c.life / 0.08), cy = sy(c.y), hx = c.dx * c.len / 2, hy = c.dy * c.len / 2; ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 1.4 * a + 0.3; ctx.beginPath(); ctx.moveTo(c.x - hx, cy - hy); ctx.lineTo(c.x + hx, cy + hy); ctx.stroke(); } ctx.restore(); }   // 白い切れ込み(切ってる感)：細く長く重なる
+  if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; for (const c of cuts) { const fade = Math.min(1, c.life / 0.08), a = fade * (c.alpha || 1), cy = sy(c.y), hx = c.dx * c.len / 2, hy = c.dy * c.len / 2; ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 1.4 * fade + 0.3; ctx.beginPath(); ctx.moveTo(c.x - hx, cy - hy); ctx.lineTo(c.x + hx, cy + hy); ctx.stroke(); } ctx.restore(); }   // 斬撃線：太さはフェード基準、半透明レイヤー(c.alpha)で立体
   const p = player;
   if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE, 'down');            // 下＝凸を下へ
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
