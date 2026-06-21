@@ -47,7 +47,7 @@ const CONFIG = {
   SHIKKU_AP: 0, SHIKKU_SPEED: 1400, SHIKKU_ACTIVE: 0.15, SHIKKU_CD: 0.42,   // 疾駆：HK素マント式の水平ダッシュ(向き方向・固定距離≈210px・無敵なし・ダメージなし・CT制・APは無料)。無敵は将来チャーム/強化で
   SHUN_AP: 2, SHUN_CD: 0.30, SHUN_DUR: 0.12, SHUN_LUNGE: 900, SHUN_REACH: 72, SHUN_H: 76, SHUN_MULT: 1.6, SHUN_BLINK_IFR: 0.14, SHUN_VANISH: 0.12,   // 瞬影：踏み込み斬り→当てた敵の真上(ポゴ範囲)に瞬間移動。SHUN_VANISH=当てた後"消えてる"時間(早すぎ防止の溜め)
   TENSHO_AP: 3, TENSHO_CD: 0.6, TENSHO_MULT: 1.4, TENSHO_LAUNCH_DIST: 270, TENSHO_LAUNCH_T: 0.3, TENSHO_LIFT_V: 900,   // 天衝＝普通の上攻撃。当てた敵を真上へ規定距離(270=1.5倍)打ち上げ。失敗なし(射程外でも発動)
-  TENSHO_DASH_V: 1600, TENSHO_DASH_T: 0.13, TENSHO_SLASH_R: 130, TENSHO_SLASH_MULT: 1.3, TENSHO_SLASH_GAP: 0.10,   // Lv2+：打ち上げ後 上へ高速ダッシュ(DASH)→その場で重力停止して横斬りN回(Lv2=1/Lv3=3・SLASH_GAP間隔)。宙吊り連斬り
+  TENSHO_DASH_V: 1600, TENSHO_DASH_T: 0.13, TENSHO_SLASH_R: 130, TENSHO_SLASH_MULT: 1.3, TENSHO_SLASH_GAP: 0.2,   // GAP=斬り間隔。広めにして「ザシュッ！ザシュッ！」と分離(連続でなく1発ずつ)   // Lv2+：打ち上げ後 上へ高速ダッシュ(DASH)→その場で重力停止して横斬りN回(Lv2=1/Lv3=3・SLASH_GAP間隔)。宙吊り連斬り
   RECLING_LOCK: 0.20,   // 壁キック直後の再しがみつき禁止＋蹴った壁への入力を弱める時間＝同じ壁へ戻る時に外へ膨らむ(小型敵を乗り越える)
   // ポゴ爆弾(専用ボタンM・チャージ式)：一瞬で離す=真下に落とす／長押しで前方ロブの飛距離up→敵接触/自攻撃(ポゴ等)/導火線で起爆→AoE＋爆心の逆へ吹き飛ばし(真下起爆=大上昇)
   BOMB_AP: 2, BOMB_CD: 0.5, BOMB_R: 10, BOMB_GRAV: 1700, BOMB_FUSE: 1.5,
@@ -409,20 +409,14 @@ function spawnDust(x, y, v) {
   for (let i = 0; i < n; i++) { const dir = i % 2 ? 1 : -1, sp = (60 + Math.random() * 170) * sc; sparks.push({ x: x + dir * 6, y, vx: dir * sp, vy: -(20 + Math.random() * 70), life: 0.22 + Math.random() * 0.16, maxLife: 0.38, kind: 'dust', grav: 480, drag: 0.84 }); }
   sparks.push({ x, y, vx: 0, vy: 0, life: 0.18, maxLife: 0.18, kind: 'ring', r: 6, vr: 120 * sc, grav: 0, drag: 1 });
 }
-// 斬撃＝1本でなく、似た三日月軌跡を微妙にずらして重ねる(メイン1+補助3=爪痕)＋貫く鋭い閃光1。全部白く輝く加算ブルーム
+// ヒット＝インパクトのみ(発光フラッシュ＋貫く鋭い閃光＋角度違いサブ線)。三日月swooshは「スイング側」の表現＝敵側には出さない
 const R = (a, b) => a + Math.random() * (b - a);   // 乱数ヘルパー[a,b)
 function spawnCuts(x, y, baseAng) {
-  const baseA0 = baseAng - 1.73;   // cut方向に対する三日月の相対基準角(試作で決定)
-  const mk = (dr, da0, dsw, wMax, alpha, life) => cuts.push({ type: 'crescent', x: x + R(-10, 10), y: y + R(-10, 10), a0: baseA0 + da0, sweep: 3.5 + dsw, r: 44 * dr, wMax, alpha, life, maxLife: life });
-  cuts.push({ type: 'glow', x, y, r: 108, alpha: 1, life: 0.18, maxLife: 0.18 });   // 放射状グラデの光輪＝周囲がボワッと白く光る(最背面)
-  mk(1.0, R(-0.05, 0.05), R(-0.15, 0.15), 24, 1.0, 0.18);                 // ① メイン＝細め・明るく長い
-  mk(1.12, R(0.05, 0.16), R(0.1, 0.4), 15, R(0.6, 0.8), 0.15);           // ② 外側の爪痕＝大きめ・細い
-  mk(0.84, R(-0.18, -0.08), R(-0.45, -0.15), 11, R(0.5, 0.7), 0.14);     // ③ 内側の爪痕＝小さめ・細い・逆ズレ
-  mk(1.02, R(-0.05, 0.12), R(0.35, 0.65), 6, R(0.4, 0.6), 0.12);         // ④ 薄い細線＝形を一番崩す
-  cuts.push({ type: 'streak', x: x + R(-5, 5), y: y + R(-5, 5), ang: baseAng + R(-0.06, 0.06), len: R(240, 290), wMax: 8, curve: R(-22, 22), alpha: 0.85, life: 0.11, maxLife: 0.11, env: INK_ENV.streak });   // ⑤ 貫く鋭い閃光(cut flash)
+  cuts.push({ type: 'glow', x, y, r: 64, alpha: 0.85, life: 0.13, maxLife: 0.13 });   // 着弾の発光フラッシュ
+  cuts.push({ type: 'streak', x: x + R(-5, 5), y: y + R(-5, 5), ang: baseAng + R(-0.06, 0.06), len: R(240, 290), wMax: 9, curve: R(-22, 22), alpha: 0.95, life: 0.12, maxLife: 0.12, env: INK_ENV.streak });   // 貫く鋭い閃光(cut)
   const cr = () => baseAng + Math.PI / 2 + R(-0.6, 0.6);   // 概ね直交＋ランダム角
-  cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(70, 120), wMax: 3, curve: R(-16, 16), alpha: 0.42, life: 0.1, maxLife: 0.1, env: INK_ENV.streak });   // ⑥ 角度違いのサブ線＝細く薄く
-  cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(60, 105), wMax: 2.5, curve: R(-16, 16), alpha: 0.38, life: 0.09, maxLife: 0.09, env: INK_ENV.streak });   // ⑦ 同上(もう1本)
+  cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(70, 120), wMax: 3, curve: R(-16, 16), alpha: 0.45, life: 0.1, maxLife: 0.1, env: INK_ENV.streak });   // 角度違いのサブ線＝細く薄く
+  cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(60, 105), wMax: 2.5, curve: R(-16, 16), alpha: 0.4, life: 0.09, maxLife: 0.09, env: INK_ENV.streak });   // 同上(もう1本)
 }
 function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
@@ -455,9 +449,9 @@ function castShikku() { const p = player; if (!p || p.state === 'fallStun' || p.
   p.dashVx = p.facing * CONFIG.SHIKKU_SPEED; p.dashVy = 0; p.dashTimer = CONFIG.SHIKKU_ACTIVE; p.dashHit = null; p.dashIfr = false; p.state = 'dash'; p.clingWall = 0; }   // HK素マント式：向き方向へ水平ダッシュ(無敵なし=dashIfr false・ダメージなし=dashHit null)
 function castShun() { const p = player; if (!p || p.state === 'fallStun' || p.shunCd > 0 || Math.floor(p.ap) < CONFIG.SHUN_AP) return; p.ap -= CONFIG.SHUN_AP; p.shunCd = CONFIG.SHUN_CD;
   p.state = 'shun'; p.shunT = CONFIG.SHUN_DUR; p.shunHit = false; p.vx = p.facing * CONFIG.SHUN_LUNGE; p.vy = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, CONFIG.SHUN_DUR + 0.04); }   // 踏み込み斬り(state=shun)。当たったらupdateで真上へ瞬間移動
-function tenshoSlash() { const p = player; p.nailTimer = CONFIG.NAIL_ACTIVE * 0.55; p.nailHitThisSwing = true;   // その場の横斬り＝向いてる方(発動時のfacing)に固定で連斬り(自前判定なので通常ヒット抑止)
+function tenshoSlash() { const p = player; p.nailTimer = CONFIG.NAIL_ACTIVE * 0.7; p.nailHitThisSwing = true;   // その場の横斬り＝向いてる方(発動時のfacing)に固定で連斬り(自前判定なので通常ヒット抑止)
   for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.TENSHO_SLASH_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.TENSHO_SLASH_MULT, p.facing > 0 ? 0 : Math.PI);
-  shake = Math.max(shake, 5); }
+  hitStop = Math.max(hitStop, 0.13); shake = Math.max(shake, 6); }   // 1斬りごとにハッキリ止める(連続でなく「ザシュッ！」と区切る)
 function castTensho() { const p = player; if (!p || p.state === 'fallStun' || p.tenshoCd > 0 || Math.floor(p.ap) < CONFIG.TENSHO_AP) return; p.ap -= CONFIG.TENSHO_AP; p.tenshoCd = CONFIG.TENSHO_CD;
   p.upTimer = CONFIG.UPATK_ACTIVE; p.upCd = CONFIG.UPATK_COOLDOWN; p.upHitThisSwing = true;   // 見た目=普通の上攻撃。打ち上げは自前判定するので通常の上ヒットは抑止
   const ub = upBox();   // 上攻撃の判定箱で当たった敵を真上へ打ち上げ(射程外でも発動自体は成功＝失敗なし)
