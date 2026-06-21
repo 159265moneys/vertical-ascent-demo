@@ -403,6 +403,12 @@ function spawnSparks(x, y) {
   for (let i = 0; i < 5; i++) { const a = Math.random() * 6.2832, s = 170 + Math.random() * 240; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18 + Math.random() * 0.12, maxLife: 0.3, kind: 'shard', len: 16 + Math.random() * 22, grav: 300, drag: 0.86 }); }
   sparks.push({ x, y, vx: 0, vy: 0, life: 0.2, maxLife: 0.2, kind: 'ring', r: 8, vr: 160, grav: 0, drag: 1 });
 }
+// 着地の砂煙＝足元から左右へ広がる柔らかい粒(dust)＋低い衝撃輪。落下速度vで量/勢いスケール
+function spawnDust(x, y, v) {
+  const n = v > 1100 ? 10 : 7, sc = Math.min(1.5, v / 900);
+  for (let i = 0; i < n; i++) { const dir = i % 2 ? 1 : -1, sp = (60 + Math.random() * 170) * sc; sparks.push({ x: x + dir * 6, y, vx: dir * sp, vy: -(20 + Math.random() * 70), life: 0.22 + Math.random() * 0.16, maxLife: 0.38, kind: 'dust', grav: 480, drag: 0.84 }); }
+  sparks.push({ x, y, vx: 0, vy: 0, life: 0.18, maxLife: 0.18, kind: 'ring', r: 6, vr: 120 * sc, grav: 0, drag: 1 });
+}
 // 斬撃＝1本でなく、似た三日月軌跡を微妙にずらして重ねる(メイン1+補助3=爪痕)＋貫く鋭い閃光1。全部白く輝く加算ブルーム
 const R = (a, b) => a + Math.random() * (b - a);   // 乱数ヘルパー[a,b)
 function spawnCuts(x, y, baseAng) {
@@ -474,7 +480,9 @@ function explodeBomb(b) {   // 起爆：AoEダメージ＋敵弾を消す＋プ�
     p.iframe = Math.max(p.iframe, CONFIG.BOMB_IFRAME);
   }
   explosions.push({ x: bx, y: by, t: 0 });
-  for (let i = 0; i < 3; i++) spawnSparks(bx + (Math.random() - 0.5) * 44, by + (Math.random() - 0.5) * 44);
+  for (let i = 0; i < 16; i++) { const a = Math.random() * 6.2832, s = 240 + Math.random() * 340; sparks.push({ x: bx, y: by, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.2 + Math.random() * 0.2, maxLife: 0.4, kind: 'shard', len: 22 + Math.random() * 34, grav: 220, drag: 0.87 }); }   // 放射状のGペン片
+  for (let i = 0; i < 12; i++) { const a = Math.random() * 6.2832, s = 120 + Math.random() * 220; sparks.push({ x: bx, y: by, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18 + Math.random() * 0.16, maxLife: 0.34, kind: 'spark', grav: 320, drag: 0.9 }); }   // 火花
+  for (let i = 0; i < 6; i++) { const a = Math.random() * 6.2832; cuts.push({ type: 'streak', x: bx, y: by, ang: a, len: 90 + Math.random() * 80, wMax: 6, curve: R(-12, 12), alpha: 0.85, life: 0.12, maxLife: 0.12, env: INK_ENV.streak }); }   // 外向きの鋭い閃光
   shake = Math.max(shake, CONFIG.BOMB_SHAKE); hitStop = Math.max(hitStop, 0.05);
 }
 const CASTERS = { kenpa: castKenpa, homura: castHomura, spin: castSpin, mayu: castMayu, raijin: castRaijin, tri: castTri, dash: castDash, shun: castShun, tensho: castTensho };   // 疾駆は枠スキルでなく専用キー(ろ/RB)から castShikku を直接呼ぶ
@@ -626,7 +634,7 @@ function update(dt) {
     if (toward && p.reclingLock <= 0) { p.state = 'cling'; p.clingWall = side; p.clingHold = 0; p.vx = 0; p.vy = 0; p.facing = -side; }   // 壁キック直後(reclingLock中)は同じ壁に即再しがみつき不可＝外へ膨らむ
     else p.vx = 0;
   }
-  if (p.y >= 0) { if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; p.airJumps = 0; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }
+  if (p.y >= 0) { if (!p.grounded && p.vy > 520) spawnDust(p.x, p.y + p.h / 2, p.vy); if (p.vy > 700) shake = Math.max(shake, 6); p.y = 0; p.vy = 0; p.grounded = true; p.airJumps = 0; if (p.state === 'fallStun') { p.state = 'air'; p.hpQ = maxQ(); } }   // 着地＝硬い着地で砂煙
   else p.grounded = false;
   for (const pl of platforms) { const top = pl.y - pl.h / 2; if (p.state !== 'cling' && p.vy >= 0 && p.x + p.w / 2 > pl.x - pl.w / 2 && p.x - p.w / 2 < pl.x + pl.w / 2 && p.y + p.h / 2 >= top && p.y + p.h / 2 <= top + 22 + p.vy * dt) { p.y = top - p.h / 2; p.vy = 0; p.grounded = true; p.airJumps = 0; } }   // ボスの一時足場に片面着地＝footing
   if (p.grounded && p.state === 'air') p.x += inX * 180 * dt;
@@ -914,19 +922,24 @@ function render() {
     const by = sy(b.y), pulse = 0.5 + 0.5 * Math.sin(b.t * (8 + (b.t / CONFIG.BOMB_FUSE) * 40));
     ctx.fillStyle = '#2a2f3a'; ctx.beginPath(); ctx.arc(b.x, by, b.r, 0, 6.2832); ctx.fill();
     ctx.strokeStyle = '#11151c'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,${120 + Math.floor(120 * pulse)},60,${0.6 + 0.4 * pulse})`; ctx.beginPath(); ctx.arc(b.x + b.r * 0.5, by - b.r * 0.9, 2.5 + 2.5 * pulse, 0, 6.2832); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; const fx2 = b.x + b.r * 0.5, fy2 = by - b.r * 0.9, fg = ctx.createRadialGradient(fx2, fy2, 0, fx2, fy2, 11 + 5 * pulse); fg.addColorStop(0, `rgba(255,210,120,${0.5 + 0.3 * pulse})`); fg.addColorStop(1, 'rgba(255,140,40,0)'); ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(fx2, fy2, 11 + 5 * pulse, 0, 6.2832); ctx.fill();   // 火種のソフトグロー
+    ctx.fillStyle = `rgba(255,${235 + Math.floor(20 * pulse)},${180 + Math.floor(60 * pulse)},${0.85 + 0.15 * pulse})`; ctx.beginPath(); ctx.arc(fx2, fy2, 2.2 + 2 * pulse, 0, 6.2832); ctx.fill(); ctx.restore();   // 白熱の芯
   }
-  for (const ex of explosions) {   // 爆発＝広がって消える橙→白リング＋中心フラッシュ
-    const k = ex.t / CONFIG.BOMB_EXP_T, R = 8 + k * CONFIG.BOMB_RADIUS, a = 1 - k, ey = sy(ex.y);
+  for (const ex of explosions) {   // 爆発＝白熱フラッシュ＋二重の衝撃波リング(白→橙)
+    const k = ex.t / CONFIG.BOMB_EXP_T, Re = 8 + k * CONFIG.BOMB_RADIUS, a = 1 - k, ey = sy(ex.y);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = `rgba(255,${Math.floor(190 - 120 * k)},90,${a})`; ctx.lineWidth = 1 + 5 * (1 - k); ctx.beginPath(); ctx.arc(ex.x, ey, R, 0, 6.2832); ctx.stroke();
-    ctx.fillStyle = `rgba(255,235,170,${a * 0.45})`; ctx.beginPath(); ctx.arc(ex.x, ey, R * 0.5, 0, 6.2832); ctx.fill();
+    const fr = CONFIG.BOMB_RADIUS * (0.55 + k * 0.5), fa = a * a, g = ctx.createRadialGradient(ex.x, ey, 0, ex.x, ey, fr);   // 中心の白熱(序盤強)
+    g.addColorStop(0, `rgba(255,255,255,${0.9 * fa})`); g.addColorStop(0.35, `rgba(255,226,150,${0.5 * fa})`); g.addColorStop(1, 'rgba(255,150,60,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex.x, ey, fr, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = `rgba(255,${Math.floor(235 - 120 * k)},${Math.floor(180 - 120 * k)},${a})`; ctx.lineWidth = (1 - k) * 7 + 1; ctx.beginPath(); ctx.arc(ex.x, ey, Re, 0, 6.2832); ctx.stroke();   // 外リング
+    ctx.strokeStyle = `rgba(255,255,255,${a * 0.6})`; ctx.lineWidth = (1 - k) * 3 + 0.5; ctx.beginPath(); ctx.arc(ex.x, ey, Re * 0.66, 0, 6.2832); ctx.stroke();   // 内リング(白・速い)
     ctx.restore();
   }
   drawPlayer();
   if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const f = sp.life / (sp.maxLife || 0.28);
     if (sp.kind === 'ring') { const a = f * 0.5; ctx.strokeStyle = `rgba(210,230,255,${a})`; ctx.lineWidth = 2.5 * f + 0.5; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), sp.r, 0, 6.2832); ctx.stroke(); }
     else if (sp.kind === 'shard') { const a = Math.min(1, f * 1.4); inkStroke(sp.x, sy(sp.y), Math.atan2(sp.vy, sp.vx), sp.len * f + 6, 3.2 * f + 0.8, 0, `rgba(255,255,255,${a})`); }
+    else if (sp.kind === 'dust') { const a = Math.min(1, f) * 0.4; ctx.fillStyle = `rgba(200,208,222,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 3.4 * (0.6 + f * 0.6), 0, 6.2832); ctx.fill(); }   // 着地の砂煙＝柔らかい灰白
     else { const a = Math.min(1, f * 1.6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } } ctx.restore(); }   // 着弾＝丸火花+Gペン片+衝撃輪
   if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter';   // 全部加算＝白く輝く軌跡
     for (const c of cuts) { const f = c.life / c.maxLife, A = Math.min(1, f * 1.4) * c.alpha; if (A <= 0) continue; const cy = sy(c.y);
