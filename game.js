@@ -362,11 +362,11 @@ const INK_ENV = {
   flick: u => Math.pow(Math.sin(Math.PI * u), 0.55),    // 斬り＝鋭い入り抜き・太い腹
   leaf: u => Math.sin(Math.PI * u),                     // 木の葉＝滑らか
   whip: u => Math.pow(1 - u, 0.7) * Math.min(1, u * 7), // 尾を引く＝根本太く先細
-  crescent: u => Math.pow(Math.min(1, u * 4), 0.5) * Math.pow(1 - u, 1.15),   // 三日月フック＝腹太→長い先細(コンマ/釣り針)
-  streak: u => Math.pow(Math.sin(Math.PI * u), 0.5),    // 閃光＝両端鋭い直線
+  crescent: u => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.82)), 1.25),   // 三日月＝両端を必ず尖らせる(線形立上り=ポイント)＋腹は前寄り(コンマ)
+  streak: u => Math.pow(Math.sin(Math.PI * u), 1.2),    // 閃光＝両端鋭い直線(尖らせる)
 };
-const CRESC_BLOOM = [[2.6, 0.05], [1.8, 0.09], [1.3, 0.17], [1, 0.95]];   // 三日月のブルーム層 [太さ倍率, α]（外→内で白熱)
-const STREAK_BLOOM = [[3, 0.05], [1.7, 0.11], [1, 0.96]];                 // 閃光のブルーム層
+const CRESC_BLOOM = [[2.2, 0.06], [1.4, 0.13], [1, 0.92]];   // 三日月のブルーム層 [太さ倍率, α]（外→内で白熱・3層で尖り維持)
+const STREAK_BLOOM = [[2.6, 0.06], [1.5, 0.12], [1, 0.96]];                 // 閃光のブルーム層
 // 曲線(2次ベジェ)の背骨に沿って太さenvelopeで左右オフセットした多角形を塗る＝Gペンの線。screen座標で描画(ctxはグローバル)
 function inkStroke(sx, syc, ang, len, wMax, curve, color, env) {
   env = env || INK_ENV.flick;
@@ -401,12 +401,16 @@ function spawnSparks(x, y) {
   for (let i = 0; i < 5; i++) { const a = Math.random() * 6.2832, s = 170 + Math.random() * 240; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18 + Math.random() * 0.12, maxLife: 0.3, kind: 'shard', len: 16 + Math.random() * 22, grav: 300, drag: 0.86 }); }
   sparks.push({ x, y, vx: 0, vy: 0, life: 0.2, maxLife: 0.2, kind: 'ring', r: 8, vr: 160, grav: 0, drag: 1 });
 }
-// 斬撃＝白く輝く三日月の軌跡(swoosh)＋貫く鋭い閃光＋補助閃光。可変幅リボン＋加算ブルーム
+// 斬撃＝1本でなく、似た三日月軌跡を微妙にずらして重ねる(メイン1+補助3=爪痕)＋貫く鋭い閃光1。全部白く輝く加算ブルーム
+const R = (a, b) => a + Math.random() * (b - a);   // 乱数ヘルパー[a,b)
 function spawnCuts(x, y, baseAng) {
-  const jx = (Math.random() - 0.5) * 6, jy = (Math.random() - 0.5) * 6;
-  cuts.push({ type: 'crescent', x: x + jx, y: y + jy, a0: baseAng - 1.73 + (Math.random() - 0.5) * 0.15, sweep: 3.55 + Math.random() * 0.3, r: 42 + Math.random() * 6, wMax: 34, alpha: 1, life: 0.17, maxLife: 0.17 });   // 三日月フック＝cut方向に対し相対角でフック
-  cuts.push({ type: 'streak', x: x + jx, y: y + jy, ang: baseAng + (Math.random() - 0.5) * 0.08, len: 280 + Math.random() * 50, wMax: 12, curve: (Math.random() - 0.5) * 24, alpha: 1, life: 0.12, maxLife: 0.12, env: INK_ENV.streak });   // 主閃光＝cut方向に貫く
-  cuts.push({ type: 'streak', x: x + jx, y: y + jy, ang: baseAng + 0.12 + (Math.random() - 0.5) * 0.1, len: 150 + Math.random() * 40, wMax: 5, curve: (Math.random() - 0.5) * 20, alpha: 0.7, life: 0.1, maxLife: 0.1, env: INK_ENV.streak });   // 補助閃光
+  const baseA0 = baseAng - 1.73;   // cut方向に対する三日月の相対基準角(試作で決定)
+  const mk = (dr, da0, dsw, wMax, alpha, life) => cuts.push({ type: 'crescent', x: x + R(-10, 10), y: y + R(-10, 10), a0: baseA0 + da0, sweep: 3.5 + dsw, r: 44 * dr, wMax, alpha, life, maxLife: life });
+  mk(1.0, R(-0.05, 0.05), R(-0.15, 0.15), 34, 1.0, 0.18);                 // ① メイン＝太く明るく長い
+  mk(1.12, R(0.05, 0.16), R(0.1, 0.4), 15, R(0.6, 0.8), 0.15);           // ② 外側の爪痕＝大きめ・細い
+  mk(0.84, R(-0.18, -0.08), R(-0.45, -0.15), 11, R(0.5, 0.7), 0.14);     // ③ 内側の爪痕＝小さめ・細い・逆ズレ
+  mk(1.02, R(-0.05, 0.12), R(0.35, 0.65), 6, R(0.4, 0.6), 0.12);         // ④ 薄い細線＝形を一番崩す
+  cuts.push({ type: 'streak', x: x + R(-5, 5), y: y + R(-5, 5), ang: baseAng + R(-0.06, 0.06), len: R(240, 290), wMax: 8, curve: R(-22, 22), alpha: 0.85, life: 0.11, maxLife: 0.11, env: INK_ENV.streak });   // ⑤ 貫く鋭い閃光(cut flash)
 }
 function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
