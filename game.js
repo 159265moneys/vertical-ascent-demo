@@ -867,23 +867,26 @@ function spriteKey() {
   const dir = (p.state === 'cling') ? (p.clingWall > 0 ? 'r' : 'l') : (p.facing < 0 ? 'l' : 'r');   // しがみつきは壁側で向き決定
   return act + '_' + dir;
 }
-function drawSlash(cx, cy, prog, mode) {
-  // 5コマをprogで送り(立体)＋上から下へクリップで伸ばす(軌道描き)→終わりにフェード。発光なし=キャラと同タッチ
-  const fi = Math.min(SLASH_FRAMES - 1, Math.max(0, Math.floor(prog * SLASH_FRAMES)));
-  const img = slashImgs[fi];
-  if (!img || !img.ok) return;
-  const dh = SLASH_H, dw = dh * (img.width / img.height) * slashReach;   // slashReach=射程倍率(攻撃方向へ伸ばす)
-  const r = Math.min(1, prog / 0.30);                                   // 序盤で一気に上から描き切る(その後は全部表示=切れて見えない)
-  const a = prog < 0.78 ? 1 : Math.max(0, 1 - (prog - 0.78) / 0.22);    // 出切った弧をしっかり見せてから後半フェード
-  ctx.save();
-  ctx.globalAlpha = a;
-  if (mode === 'right')      { ctx.translate(cx + SLASH_OFF, cy); ctx.scale(-1, 1); }    // 右＝水平反転(凸を右へ・上下は保持)
-  else if (mode === 'left')  { ctx.translate(cx - SLASH_OFF, cy); }                      // 左＝そのまま(凸が左)
-  else if (mode === 'down')  { ctx.translate(cx, cy + SLASH_OFF); ctx.rotate(-Math.PI / 2); }
-  else /* up */              { ctx.translate(cx, cy - SLASH_OFF); ctx.rotate(Math.PI / 2); }
-  ctx.beginPath(); ctx.rect(-dw / 2, -dh / 2, dw, dh * r); ctx.clip();  // 上端からr割の帯だけ＝軌道を順に表示
-  ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+// スイングの弧＝手続きの三日月(光輪+メイン+爪痕2本+貫く閃光)。発光は加算ブルーム。screen座標・baseAngに向く
+function slashArc(sx, syc, baseAng, a, grow, reach) {
+  if (a <= 0) return;
+  const a0 = baseAng - 1.73, r0 = 40 * reach * grow;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const rr = 92 * reach * grow, g = ctx.createRadialGradient(sx, syc, 0, sx, syc, rr);   // 放射状の光輪
+  g.addColorStop(0, `rgba(255,255,255,${0.4 * a})`); g.addColorStop(0.4, `rgba(214,234,255,${0.12 * a})`); g.addColorStop(1, 'rgba(200,225,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, syc, rr, 0, 6.2832); ctx.fill();
+  const mkc = (dr, da0, dsw, wMax, al) => { for (const Lr of CRESC_BLOOM) inkCrescent(sx, syc, r0 * dr, a0 + da0, 3.5 + dsw, wMax * Lr[0] * reach, `rgba(255,255,255,${Lr[1] * al * a})`, INK_ENV.crescent); };
+  mkc(1.0, 0, 0, 22, 1.0);                 // メイン(細)
+  mkc(1.13, 0.1, 0.3, 12, 0.7);            // 外の爪痕
+  mkc(0.84, -0.12, -0.3, 9, 0.55);         // 内の爪痕
+  for (const Lr of STREAK_BLOOM) inkStroke(sx, syc, baseAng, 230 * reach, 8 * Lr[0], 16, `rgba(255,255,255,${Lr[1] * 0.9 * a})`, INK_ENV.streak);   // 貫く閃光
   ctx.restore();
+}
+function drawSlash(cx, cy, prog, mode) {
+  const baseAng = mode === 'right' ? 0 : mode === 'left' ? Math.PI : mode === 'down' ? Math.PI / 2 : -Math.PI / 2;
+  const a = prog < 0.62 ? 1 : Math.max(0, 1 - (prog - 0.62) / 0.38);   // 後半フェード
+  const grow = 0.82 + Math.min(1, prog / 0.22) * 0.18;                 // 序盤で一気に出る
+  slashArc(cx + Math.cos(baseAng) * SLASH_OFF * 0.5, cy + Math.sin(baseAng) * SLASH_OFF * 0.5, baseAng, a, grow, slashReach);
 }
 function drawPlayer() {
   const p = player, x = p.x, y = sy(p.y);
@@ -938,7 +941,7 @@ function render() {
   if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, end = START + prog * 6.2832, cyp = sy(p.y);   // 時計回りに伸びる弧
     ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,255,255,${0.75 - 0.35 * prog})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, cyp, CONFIG.SPIN_R, START, end); ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.arc(p.x + Math.cos(end) * CONFIG.SPIN_R, cyp + Math.sin(end) * CONFIG.SPIN_R, 4.5, 0, 6.2832); ctx.fill(); ctx.restore(); }   // 先端の明点
-  if (p.state === 'dash' && p.dashIfr && slashImgs[2] && slashImgs[2].ok) { const ang = Math.atan2(p.dashVy, p.dashVx), img = slashImgs[2], dh = SLASH_H * 1.3, dw = dh * (img.width / img.height); ctx.save(); ctx.translate(p.x, sy(p.y)); ctx.rotate(ang - Math.PI); ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore(); }   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ)
+  if (p.state === 'dash' && p.dashIfr) slashArc(p.x, sy(p.y), Math.atan2(p.dashVy, p.dashVx), 0.92, 1.15, 1.15);   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ・手続き三日月)
   else if (p.state === 'dash' && !p.dashIfr) { const img = sprites[spriteKey()]; if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height), fy = sy(p.y) + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC; ctx.save(); ctx.globalAlpha = 0.22; for (const k of [1, 2]) ctx.drawImage(img, p.x - p.dashVx * 0.012 * k - dw / 2, fy, dw, dh); ctx.restore(); } }   // 疾駆=ただの移動＝残像のみ(攻撃/ダメージ無し)
   if (skillMod() && Object.values(meta.slots).some(id => LOCKON_SKILLS.has(id))) { const t = lockTarget(); if (t) {   // ロックオンマーカー：スキル修飾(Space/LB)押下中＝ロックオン系スキルを撃とうとしてる時だけ表示
     const rx = t.x, ry = sy(t.y), R = 15, a = (p.dashCd <= 0 && Math.floor(p.ap) >= CONFIG.DASH_AP) ? 0.9 : 0.4;
