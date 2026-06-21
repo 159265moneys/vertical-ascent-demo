@@ -889,8 +889,7 @@ function slashArc(sx, syc, baseAng, a, grow, reach) {
   mkc(1.0, 0, 0, 22, 1.0);                 // メイン(細)
   mkc(1.13, 0.1, 0.3, 12, 0.7);            // 外の爪痕
   mkc(0.84, -0.12, -0.3, 9, 0.55);         // 内の爪痕
-  for (const Lr of STREAK_BLOOM) inkStroke(sx, syc, baseAng, 230 * reach, 8 * Lr[0], 16, `rgba(255,255,255,${Lr[1] * 0.9 * a})`, INK_ENV.streak);   // 貫く閃光
-  ctx.restore();
+  ctx.restore();   // ※貫く閃光はスイング(素振り)では出さない＝当たった時(spawnCuts)だけ
 }
 function drawSlash(cx, cy, prog, mode) {
   const baseAng = mode === 'right' ? 0 : mode === 'left' ? Math.PI : mode === 'down' ? Math.PI / 2 : -Math.PI / 2;
