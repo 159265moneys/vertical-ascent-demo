@@ -397,7 +397,7 @@ function castShikku() { const p = player; if (!p || p.state === 'fallStun' || p.
   p.dashVx = p.facing * CONFIG.SHIKKU_SPEED; p.dashVy = 0; p.dashTimer = CONFIG.SHIKKU_ACTIVE; p.dashHit = null; p.dashIfr = false; p.state = 'dash'; p.clingWall = 0; }   // HK素マント式：向き方向へ水平ダッシュ(無敵なし=dashIfr false・ダメージなし=dashHit null)
 function castShun() { const p = player; if (!p || p.state === 'fallStun' || p.shunCd > 0 || Math.floor(p.ap) < CONFIG.SHUN_AP) return; p.ap -= CONFIG.SHUN_AP; p.shunCd = CONFIG.SHUN_CD;
   p.state = 'shun'; p.shunT = CONFIG.SHUN_DUR; p.shunHit = false; p.vx = p.facing * CONFIG.SHUN_LUNGE; p.vy = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, CONFIG.SHUN_DUR + 0.04); }   // 踏み込み斬り(state=shun)。当たったらupdateで真上へ瞬間移動
-function tenshoSlash() { const p = player; p.facing = -p.facing; p.nailTimer = CONFIG.NAIL_ACTIVE * 0.55; p.nailHitThisSwing = true;   // その場の横斬り＝ネイルの見た目で左右交互(自前判定なので通常ヒット抑止)
+function tenshoSlash() { const p = player; p.nailTimer = CONFIG.NAIL_ACTIVE * 0.55; p.nailHitThisSwing = true;   // その場の横斬り＝向いてる方(発動時のfacing)に固定で連斬り(自前判定なので通常ヒット抑止)
   for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.TENSHO_SLASH_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.TENSHO_SLASH_MULT, p.facing > 0 ? 0 : Math.PI);
   shake = Math.max(shake, 5); }
 function castTensho() { const p = player; if (!p || p.state === 'fallStun' || p.tenshoCd > 0 || Math.floor(p.ap) < CONFIG.TENSHO_AP) return; p.ap -= CONFIG.TENSHO_AP; p.tenshoCd = CONFIG.TENSHO_CD;
