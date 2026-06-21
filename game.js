@@ -362,7 +362,11 @@ const INK_ENV = {
   flick: u => Math.pow(Math.sin(Math.PI * u), 0.55),    // 斬り＝鋭い入り抜き・太い腹
   leaf: u => Math.sin(Math.PI * u),                     // 木の葉＝滑らか
   whip: u => Math.pow(1 - u, 0.7) * Math.min(1, u * 7), // 尾を引く＝根本太く先細
+  crescent: u => Math.pow(Math.min(1, u * 4), 0.5) * Math.pow(1 - u, 1.15),   // 三日月フック＝腹太→長い先細(コンマ/釣り針)
+  streak: u => Math.pow(Math.sin(Math.PI * u), 0.5),    // 閃光＝両端鋭い直線
 };
+const CRESC_BLOOM = [[2.6, 0.05], [1.8, 0.09], [1.3, 0.17], [1, 0.95]];   // 三日月のブルーム層 [太さ倍率, α]（外→内で白熱)
+const STREAK_BLOOM = [[3, 0.05], [1.7, 0.11], [1, 0.96]];                 // 閃光のブルーム層
 // 曲線(2次ベジェ)の背骨に沿って太さenvelopeで左右オフセットした多角形を塗る＝Gペンの線。screen座標で描画(ctxはグローバル)
 function inkStroke(sx, syc, ang, len, wMax, curve, color, env) {
   env = env || INK_ENV.flick;
@@ -382,20 +386,27 @@ function inkStroke(sx, syc, ang, len, wMax, curve, color, env) {
   for (let i = RR.length - 2; i >= 0; i -= 2) ctx.lineTo(RR[i], RR[i + 1]);
   ctx.closePath(); ctx.fillStyle = color; ctx.fill();
 }
+// 三日月の軌跡＝円弧の背骨に沿って太さenvelopeで内外オフセットしたリボンを塗る(swoosh)。screen座標
+function inkCrescent(cx, cy, r, a0, sweep, wMax, color, env) {
+  env = env || INK_ENV.crescent;
+  const N = 30;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) { const t = i / N, a = a0 + sweep * t, w = wMax * env(t) / 2, ro = r + w, x = cx + Math.cos(a) * ro, y = cy + Math.sin(a) * ro; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+  for (let i = N; i >= 0; i--) { const t = i / N, a = a0 + sweep * t, w = wMax * env(t) / 2, ri = r - w; ctx.lineTo(cx + Math.cos(a) * ri, cy + Math.sin(a) * ri); }
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
 // 着弾の粒子＝丸グロー(spark)＋極小Gペン片(shard)＋衝撃波の輪(ring)。1プール(sparks)に種別で同居
 function spawnSparks(x, y) {
   for (let i = 0; i < 6; i++) { const a = Math.random() * 6.2832, s = 80 + Math.random() * 200; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12, maxLife: 0.28, kind: 'spark', grav: 600, drag: 0.9 }); }
   for (let i = 0; i < 5; i++) { const a = Math.random() * 6.2832, s = 170 + Math.random() * 240; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18 + Math.random() * 0.12, maxLife: 0.3, kind: 'shard', len: 16 + Math.random() * 22, grav: 300, drag: 0.86 }); }
   sparks.push({ x, y, vx: 0, vy: 0, life: 0.2, maxLife: 0.2, kind: 'ring', r: 8, vr: 160, grav: 0, drag: 1 });
 }
-// 斬撃線＝Gペンの主線(長・湾曲)＋概ね直交の2本セット＋薄い先行線。可変幅リボンで立体
+// 斬撃＝白く輝く三日月の軌跡(swoosh)＋貫く鋭い閃光＋補助閃光。可変幅リボン＋加算ブルーム
 function spawnCuts(x, y, baseAng) {
-  const jit = () => (Math.random() - 0.5) * 0.06;
-  const cr = () => baseAng + Math.PI / 2 + (Math.random() - 0.5) * 0.8;   // 概ね直交＋ランダム
-  const add = (ang, len, wMax, curve, alpha, life) => cuts.push({ x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 6, ang, len, wMax, curve, alpha, life, maxLife: life, env: INK_ENV.flick });
-  add(baseAng + jit(), 300 + Math.random() * 80, 14, (Math.random() < 0.5 ? 1 : -1) * (40 + Math.random() * 40), 0.95, 0.16 + Math.random() * 0.05);   // 主線：長く湾曲・太い腹
-  add(cr(), 80 + Math.random() * 50, 7, (Math.random() - 0.5) * 40, 0.8, 0.13); add(cr(), 70 + Math.random() * 45, 6, (Math.random() - 0.5) * 40, 0.72, 0.12);   // 直交2本
-  add(baseAng + jit(), 220 + Math.random() * 90, 4, (Math.random() - 0.5) * 30, 0.5, 0.1);   // 薄い先行線
+  const jx = (Math.random() - 0.5) * 6, jy = (Math.random() - 0.5) * 6;
+  cuts.push({ type: 'crescent', x: x + jx, y: y + jy, a0: baseAng - 1.73 + (Math.random() - 0.5) * 0.15, sweep: 3.55 + Math.random() * 0.3, r: 42 + Math.random() * 6, wMax: 34, alpha: 1, life: 0.17, maxLife: 0.17 });   // 三日月フック＝cut方向に対し相対角でフック
+  cuts.push({ type: 'streak', x: x + jx, y: y + jy, ang: baseAng + (Math.random() - 0.5) * 0.08, len: 280 + Math.random() * 50, wMax: 12, curve: (Math.random() - 0.5) * 24, alpha: 1, life: 0.12, maxLife: 0.12, env: INK_ENV.streak });   // 主閃光＝cut方向に貫く
+  cuts.push({ type: 'streak', x: x + jx, y: y + jy, ang: baseAng + 0.12 + (Math.random() - 0.5) * 0.1, len: 150 + Math.random() * 40, wMax: 5, curve: (Math.random() - 0.5) * 20, alpha: 0.7, life: 0.1, maxLife: 0.1, env: INK_ENV.streak });   // 補助閃光
 }
 function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
@@ -907,12 +918,11 @@ function render() {
     if (sp.kind === 'ring') { const a = f * 0.5; ctx.strokeStyle = `rgba(210,230,255,${a})`; ctx.lineWidth = 2.5 * f + 0.5; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), sp.r, 0, 6.2832); ctx.stroke(); }
     else if (sp.kind === 'shard') { const a = Math.min(1, f * 1.4); inkStroke(sp.x, sy(sp.y), Math.atan2(sp.vy, sp.vx), sp.len * f + 6, 3.2 * f + 0.8, 0, `rgba(255,255,255,${a})`); }
     else { const a = Math.min(1, f * 1.6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } } ctx.restore(); }   // 着弾＝丸火花+Gペン片+衝撃輪
-  if (cuts.length) { ctx.save();
-    ctx.globalCompositeOperation = 'lighter';   // グロー(青白・additive)
-    for (const c of cuts) { const f = c.life / c.maxLife, a = Math.min(1, f * 1.5) * c.alpha * 0.45; if (a > 0) inkStroke(c.x, sy(c.y), c.ang, c.len, c.wMax * 2.3, c.curve, `rgba(150,195,255,${a})`, c.env); }
-    ctx.globalCompositeOperation = 'source-over';   // 暗い裏当て→白コア(どの背景でも映える＝墨のハイライト)
-    for (const c of cuts) { const f = c.life / c.maxLife, a = Math.min(1, f * 1.7) * c.alpha; if (a <= 0) continue; const ln = c.len * (1 + (1 - f) * 0.05); inkStroke(c.x, sy(c.y), c.ang, ln, c.wMax * 1.35, c.curve, `rgba(8,11,17,${a * 0.5})`, c.env); inkStroke(c.x, sy(c.y), c.ang, ln, c.wMax, c.curve, `rgba(255,255,255,${a})`, c.env); }
-    ctx.restore(); }   // 斬撃線＝Gペン可変幅リボン
+  if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter';   // 全部加算＝白く輝く軌跡
+    for (const c of cuts) { const f = c.life / c.maxLife, A = Math.min(1, f * 1.4) * c.alpha; if (A <= 0) continue; const cy = sy(c.y);
+      if (c.type === 'crescent') { for (const Lr of CRESC_BLOOM) inkCrescent(c.x, cy, c.r, c.a0, c.sweep, c.wMax * Lr[0], `rgba(255,255,255,${Lr[1] * A})`, INK_ENV.crescent); }
+      else { const ln = c.len * (1 + (1 - f) * 0.05); for (const Lr of STREAK_BLOOM) inkStroke(c.x, cy, c.ang, ln, c.wMax * Lr[0], c.curve, `rgba(255,255,255,${Lr[1] * A})`, c.env); } }
+    ctx.restore(); }   // 斬撃＝三日月swoosh＋閃光・加算ブルーム
   const p = player;
   if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE, 'down');            // 下＝凸を下へ
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
