@@ -420,6 +420,9 @@ function spawnCuts(x, y, baseAng) {
   mk(0.84, R(-0.18, -0.08), R(-0.45, -0.15), 11, R(0.5, 0.7), 0.14);     // ③ 内側の爪痕＝小さめ・細い・逆ズレ
   mk(1.02, R(-0.05, 0.12), R(0.35, 0.65), 6, R(0.4, 0.6), 0.12);         // ④ 薄い細線＝形を一番崩す
   cuts.push({ type: 'streak', x: x + R(-5, 5), y: y + R(-5, 5), ang: baseAng + R(-0.06, 0.06), len: R(240, 290), wMax: 8, curve: R(-22, 22), alpha: 0.85, life: 0.11, maxLife: 0.11, env: INK_ENV.streak });   // ⑤ 貫く鋭い閃光(cut flash)
+  const cr = () => baseAng + Math.PI / 2 + R(-0.6, 0.6);   // 概ね直交＋ランダム角
+  cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(70, 120), wMax: 3, curve: R(-16, 16), alpha: 0.42, life: 0.1, maxLife: 0.1, env: INK_ENV.streak });   // ⑥ 角度違いのサブ線＝細く薄く
+  cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(60, 105), wMax: 2.5, curve: R(-16, 16), alpha: 0.38, life: 0.09, maxLife: 0.09, env: INK_ENV.streak });   // ⑦ 同上(もう1本)
 }
 function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
