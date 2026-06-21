@@ -365,8 +365,8 @@ const INK_ENV = {
   crescent: u => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.82)), 1.25),   // 三日月＝両端を必ず尖らせる(線形立上り=ポイント)＋腹は前寄り(コンマ)
   streak: u => Math.pow(Math.sin(Math.PI * u), 1.2),    // 閃光＝両端鋭い直線(尖らせる)
 };
-const CRESC_BLOOM = [[2.2, 0.06], [1.4, 0.13], [1, 0.92]];   // 三日月のブルーム層 [太さ倍率, α]（外→内で白熱・3層で尖り維持)
-const STREAK_BLOOM = [[2.6, 0.06], [1.5, 0.12], [1, 0.96]];                 // 閃光のブルーム層
+const CRESC_BLOOM = [[3.6, 0.04], [2.3, 0.08], [1.4, 0.16], [1, 0.98]];   // 三日月のブルーム層 [太さ倍率, α]（外→内で白熱・広いソフト層を足して輝き増)
+const STREAK_BLOOM = [[3.4, 0.05], [2, 0.1], [1, 1]];                       // 閃光のブルーム層
 // 曲線(2次ベジェ)の背骨に沿って太さenvelopeで左右オフセットした多角形を塗る＝Gペンの線。screen座標で描画(ctxはグローバル)
 function inkStroke(sx, syc, ang, len, wMax, curve, color, env) {
   env = env || INK_ENV.flick;
@@ -406,7 +406,8 @@ const R = (a, b) => a + Math.random() * (b - a);   // 乱数ヘルパー[a,b)
 function spawnCuts(x, y, baseAng) {
   const baseA0 = baseAng - 1.73;   // cut方向に対する三日月の相対基準角(試作で決定)
   const mk = (dr, da0, dsw, wMax, alpha, life) => cuts.push({ type: 'crescent', x: x + R(-10, 10), y: y + R(-10, 10), a0: baseA0 + da0, sweep: 3.5 + dsw, r: 44 * dr, wMax, alpha, life, maxLife: life });
-  mk(1.0, R(-0.05, 0.05), R(-0.15, 0.15), 34, 1.0, 0.18);                 // ① メイン＝太く明るく長い
+  cuts.push({ type: 'glow', x, y, r: 108, alpha: 1, life: 0.18, maxLife: 0.18 });   // 放射状グラデの光輪＝周囲がボワッと白く光る(最背面)
+  mk(1.0, R(-0.05, 0.05), R(-0.15, 0.15), 24, 1.0, 0.18);                 // ① メイン＝細め・明るく長い
   mk(1.12, R(0.05, 0.16), R(0.1, 0.4), 15, R(0.6, 0.8), 0.15);           // ② 外側の爪痕＝大きめ・細い
   mk(0.84, R(-0.18, -0.08), R(-0.45, -0.15), 11, R(0.5, 0.7), 0.14);     // ③ 内側の爪痕＝小さめ・細い・逆ズレ
   mk(1.02, R(-0.05, 0.12), R(0.35, 0.65), 6, R(0.4, 0.6), 0.12);         // ④ 薄い細線＝形を一番崩す
@@ -925,6 +926,7 @@ function render() {
   if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter';   // 全部加算＝白く輝く軌跡
     for (const c of cuts) { const f = c.life / c.maxLife, A = Math.min(1, f * 1.4) * c.alpha; if (A <= 0) continue; const cy = sy(c.y);
       if (c.type === 'crescent') { for (const Lr of CRESC_BLOOM) inkCrescent(c.x, cy, c.r, c.a0, c.sweep, c.wMax * Lr[0], `rgba(255,255,255,${Lr[1] * A})`, INK_ENV.crescent); }
+      else if (c.type === 'glow') { const rr2 = c.r * (0.9 + (1 - f) * 0.25), g = ctx.createRadialGradient(c.x, cy, 0, c.x, cy, rr2); g.addColorStop(0, `rgba(255,255,255,${0.5 * A})`); g.addColorStop(0.4, `rgba(214,234,255,${0.16 * A})`); g.addColorStop(1, 'rgba(200,225,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, cy, rr2, 0, 6.2832); ctx.fill(); }
       else { const ln = c.len * (1 + (1 - f) * 0.05); for (const Lr of STREAK_BLOOM) inkStroke(c.x, cy, c.ang, ln, c.wMax * Lr[0], c.curve, `rgba(255,255,255,${Lr[1] * A})`, c.env); } }
     ctx.restore(); }   // 斬撃＝三日月swoosh＋閃光・加算ブルーム
   const p = player;
