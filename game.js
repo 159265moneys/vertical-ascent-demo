@@ -356,15 +356,46 @@ function damage(q, knockY, knockX) {
   }
 }
 
-function spawnSparks(x, y) { for (let i = 0; i < 7; i++) { const a = Math.random() * 6.2832, s = 70 + Math.random() * 180; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12 }); } }
-function spawnCuts(x, y, baseAng) {   // 切りつけ方向に沿った華やかな斬撃線。主線(長)＋概ね直交の2本セット＋半透明レイヤーで立体に
-  const add = (ang, len, alpha) => cuts.push({ x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8, dx: Math.cos(ang), dy: Math.sin(ang), len, life: 0.10 + Math.random() * 0.08, alpha });
-  const t = () => (Math.random() - 0.5) * 0.07;                                       // 主線のゆらぎ±約2度
-  const cr = () => baseAng + Math.PI / 2 + (Math.random() - 0.5) * 0.8;               // 概ね直交＋ランダム(±約23度)
-  add(baseAng + t(), 280 + Math.random() * 90, 0.7);                                  // 主線：切りつけ方向に長い(約4倍)。全体70%
-  add(cr(), 66 + Math.random() * 55, 0.66); add(cr(), 58 + Math.random() * 55, 0.63); // 概ね直交の2本セット(短)
-  for (let i = 0; i < 2; i++) add(baseAng + t(), 240 + Math.random() * 120, 0.32);    // 立体：主線方向の薄い重ね(さらに70%≒49%)
-  add(cr(), 60 + Math.random() * 50, 0.27);                                           // 直交側の薄い重ね
+// ── VFX基盤：Gペン風の可変幅ストローク（直線strokeでなく"塗りリボン"）──────────────
+// 太さプロファイル(envelope)＝両端0→腹が太い。質感は数値だけで調整できる
+const INK_ENV = {
+  flick: u => Math.pow(Math.sin(Math.PI * u), 0.55),    // 斬り＝鋭い入り抜き・太い腹
+  leaf: u => Math.sin(Math.PI * u),                     // 木の葉＝滑らか
+  whip: u => Math.pow(1 - u, 0.7) * Math.min(1, u * 7), // 尾を引く＝根本太く先細
+};
+// 曲線(2次ベジェ)の背骨に沿って太さenvelopeで左右オフセットした多角形を塗る＝Gペンの線。screen座標で描画(ctxはグローバル)
+function inkStroke(sx, syc, ang, len, wMax, curve, color, env) {
+  env = env || INK_ENV.flick;
+  const dx = Math.cos(ang), dy = Math.sin(ang), nx = -dy, ny = dx;
+  const p0x = sx - dx * len / 2, p0y = syc - dy * len / 2, p1x = sx + dx * len / 2, p1y = syc + dy * len / 2;
+  const pcx = (p0x + p1x) / 2 + nx * curve, pcy = (p0y + p1y) / 2 + ny * curve;   // 制御点＝中点を法線方向へ押して湾曲
+  const N = 22, LL = [], RR = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, mt = 1 - t;
+    const x = mt * mt * p0x + 2 * mt * t * pcx + t * t * p1x, y = mt * mt * p0y + 2 * mt * t * pcy + t * t * p1y;
+    const tx = 2 * mt * (pcx - p0x) + 2 * t * (p1x - pcx), ty = 2 * mt * (pcy - p0y) + 2 * t * (p1y - pcy);
+    const tl = Math.hypot(tx, ty) || 1, ux = -ty / tl, uy = tx / tl, w = wMax * env(t) / 2;
+    LL.push(x + ux * w, y + uy * w); RR.push(x - ux * w, y - uy * w);
+  }
+  ctx.beginPath(); ctx.moveTo(LL[0], LL[1]);
+  for (let i = 2; i < LL.length; i += 2) ctx.lineTo(LL[i], LL[i + 1]);
+  for (let i = RR.length - 2; i >= 0; i -= 2) ctx.lineTo(RR[i], RR[i + 1]);
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
+// 着弾の粒子＝丸グロー(spark)＋極小Gペン片(shard)＋衝撃波の輪(ring)。1プール(sparks)に種別で同居
+function spawnSparks(x, y) {
+  for (let i = 0; i < 6; i++) { const a = Math.random() * 6.2832, s = 80 + Math.random() * 200; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.16 + Math.random() * 0.12, maxLife: 0.28, kind: 'spark', grav: 600, drag: 0.9 }); }
+  for (let i = 0; i < 5; i++) { const a = Math.random() * 6.2832, s = 170 + Math.random() * 240; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18 + Math.random() * 0.12, maxLife: 0.3, kind: 'shard', len: 16 + Math.random() * 22, grav: 300, drag: 0.86 }); }
+  sparks.push({ x, y, vx: 0, vy: 0, life: 0.2, maxLife: 0.2, kind: 'ring', r: 8, vr: 160, grav: 0, drag: 1 });
+}
+// 斬撃線＝Gペンの主線(長・湾曲)＋概ね直交の2本セット＋薄い先行線。可変幅リボンで立体
+function spawnCuts(x, y, baseAng) {
+  const jit = () => (Math.random() - 0.5) * 0.06;
+  const cr = () => baseAng + Math.PI / 2 + (Math.random() - 0.5) * 0.8;   // 概ね直交＋ランダム
+  const add = (ang, len, wMax, curve, alpha, life) => cuts.push({ x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 6, ang, len, wMax, curve, alpha, life, maxLife: life, env: INK_ENV.flick });
+  add(baseAng + jit(), 300 + Math.random() * 80, 14, (Math.random() < 0.5 ? 1 : -1) * (40 + Math.random() * 40), 0.95, 0.16 + Math.random() * 0.05);   // 主線：長く湾曲・太い腹
+  add(cr(), 80 + Math.random() * 50, 7, (Math.random() - 0.5) * 40, 0.8, 0.13); add(cr(), 70 + Math.random() * 45, 6, (Math.random() - 0.5) * 40, 0.72, 0.12);   // 直交2本
+  add(baseAng + jit(), 220 + Math.random() * 90, 4, (Math.random() - 0.5) * 30, 0.5, 0.1);   // 薄い先行線
 }
 function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋火花＋切りつけ方向の斬撃線(既定=向き水平)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
@@ -688,7 +719,7 @@ function update(dt) {
   enemies = enemies.filter(e => e.alive && e.y < (SANDBOX ? 100 : cameraY + H + CONFIG.ENEMY_KEEP));   // 死んだ敵=倒したら恒久消滅／生存敵は下まで保持。箱では床下(y>100)に落ちた死体を除去
   projectiles = projectiles.filter(pr => pr.alive);
   bombs = bombs.filter(b => b.live); explosions = explosions.filter(ex => ex.t < CONFIG.BOMB_EXP_T);
-  for (const sp of sparks) { sp.life -= dt; sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.vy += 700 * dt; sp.vx *= 0.92; }
+  for (const sp of sparks) { sp.life -= dt; sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.vy += (sp.grav === undefined ? 700 : sp.grav) * dt; sp.vx *= (sp.drag === undefined ? 0.92 : sp.drag); if (sp.kind === 'ring') sp.r += sp.vr * dt; }
   sparks = sparks.filter(sp => sp.life > 0);
   for (const c of cuts) c.life -= dt; cuts = cuts.filter(c => c.life > 0);
   for (const pl of platforms) pl.life -= dt; platforms = platforms.filter(pl => pl.life > 0);
@@ -872,8 +903,16 @@ function render() {
     ctx.restore();
   }
   drawPlayer();
-  if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const a = Math.min(1, sp.life * 6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } ctx.restore(); }   // 着弾火花
-  if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; for (const c of cuts) { const fade = Math.min(1, c.life / 0.08), a = fade * (c.alpha || 1), cy = sy(c.y), hx = c.dx * c.len / 2, hy = c.dy * c.len / 2; ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 1.4 * fade + 0.3; ctx.beginPath(); ctx.moveTo(c.x - hx, cy - hy); ctx.lineTo(c.x + hx, cy + hy); ctx.stroke(); } ctx.restore(); }   // 斬撃線：太さはフェード基準、半透明レイヤー(c.alpha)で立体
+  if (sparks.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of sparks) { const f = sp.life / (sp.maxLife || 0.28);
+    if (sp.kind === 'ring') { const a = f * 0.5; ctx.strokeStyle = `rgba(210,230,255,${a})`; ctx.lineWidth = 2.5 * f + 0.5; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), sp.r, 0, 6.2832); ctx.stroke(); }
+    else if (sp.kind === 'shard') { const a = Math.min(1, f * 1.4); inkStroke(sp.x, sy(sp.y), Math.atan2(sp.vy, sp.vx), sp.len * f + 6, 3.2 * f + 0.8, 0, `rgba(255,255,255,${a})`); }
+    else { const a = Math.min(1, f * 1.6); ctx.fillStyle = `rgba(255,248,205,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } } ctx.restore(); }   // 着弾＝丸火花+Gペン片+衝撃輪
+  if (cuts.length) { ctx.save();
+    ctx.globalCompositeOperation = 'lighter';   // グロー(青白・additive)
+    for (const c of cuts) { const f = c.life / c.maxLife, a = Math.min(1, f * 1.5) * c.alpha * 0.45; if (a > 0) inkStroke(c.x, sy(c.y), c.ang, c.len, c.wMax * 2.3, c.curve, `rgba(150,195,255,${a})`, c.env); }
+    ctx.globalCompositeOperation = 'source-over';   // 暗い裏当て→白コア(どの背景でも映える＝墨のハイライト)
+    for (const c of cuts) { const f = c.life / c.maxLife, a = Math.min(1, f * 1.7) * c.alpha; if (a <= 0) continue; const ln = c.len * (1 + (1 - f) * 0.05); inkStroke(c.x, sy(c.y), c.ang, ln, c.wMax * 1.35, c.curve, `rgba(8,11,17,${a * 0.5})`, c.env); inkStroke(c.x, sy(c.y), c.ang, ln, c.wMax, c.curve, `rgba(255,255,255,${a})`, c.env); }
+    ctx.restore(); }   // 斬撃線＝Gペン可変幅リボン
   const p = player;
   if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE, 'down');            // 下＝凸を下へ
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
