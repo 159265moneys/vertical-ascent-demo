@@ -54,6 +54,8 @@ const CONFIG = {
   BOMB_CHARGE_MIN: 0.16, BOMB_CHARGE_MAX: 0.42, BOMB_VX_MAX: 380, BOMB_VY_ARC: 230,   // 押下<MIN=真下(普通のタップは全部ドロップ)／MIN〜MAXで前方の飛距離up。要"溜め"の手応え
   BOMB_RADIUS: 88, BOMB_MULT: 2.2, BOMB_LAUNCH: 1680, BOMB_LAUNCH_R: 124, BOMB_IFRAME: 0.12, BOMB_SHAKE: 9, BOMB_EXP_T: 0.32,   // BOMB_LAUNCH=吹き飛ばし(上下左右)の強さ(基準1400の1.2倍)
   UNLOCK_SP: 10,
+  SKILL_LV_COST: [10, 16, 24, 34],   // スキル恒久強化のSPコスト(Lv1→2, 2→3, 3→4, 4→5)。企画書§14-3コスト曲線(暫定)
+  SKILL_LV_DMG: [1.0, 1.25, 1.5, 1.75, 2.0],   // ダメージ系スキルのLv別威力倍率(Lv1=現状維持→Lv5=×2／企画書「Lv1~5: ×1.2~2」)。index=Lv-1
   // --- チャーム ---
   NOTCH_EXPAND_GOLD: 40, WKICK_BONUS: 1.25, PARA_FALL: 0.5, DEF_REDUCE: 1,
   KAISHIN_CHANCE: 0.2, KAISHIN_MULT: 2, KIBA_MULT: 0.5,
@@ -90,19 +92,24 @@ const CONFIG = {
 };
 
 // スキルレジストリ（id → 表示名 / MP CONFIGキー / CTフィールド / CT最大CONFIGキー）。割当は meta.slots（横穴で変更）
+// kind: 'dmg'=Lv別威力倍率(lvMul)／'tensho'=Lv別斬り回数(専用)／'none'=Lv強化まだ未設計(店に出さない)。maxLv=恒久強化の段数
 const SKILL_META = {
-  mayu: { name: '守護の繭', ap: 'MAYU_AP', cd: 'mayuCd', cdMax: 'MAYU_CD' },
-  kenpa: { name: '剣波', ap: 'KENPA_AP', cd: 'kenpaCd', cdMax: 'KENPA_CD' },
-  spin: { name: '回転斬り', ap: 'SPIN_AP', cd: 'spinCd', cdMax: 'SPIN_CD' },
-  homura: { name: '焔', ap: 'HOMURA_AP', cd: 'homuraCd', cdMax: 'HOMURA_CD' },
-  raijin: { name: '落雷', ap: 'RAIJIN_AP', cd: 'raijinCd', cdMax: 'RAIJIN_CD' },
-  tri: { name: '三連剣波', ap: 'TRI_AP', cd: 'triCd', cdMax: 'TRI_CD' },
-  dash: { name: 'ロックオン突撃', ap: 'DASH_AP', cd: 'dashCd', cdMax: 'DASH_CD' },
-  shun: { name: '瞬影', ap: 'SHUN_AP', cd: 'shunCd', cdMax: 'SHUN_CD' },
-  tensho: { name: '天衝', ap: 'TENSHO_AP', cd: 'tenshoCd', cdMax: 'TENSHO_CD' },
+  mayu: { name: '守護の繭', ap: 'MAYU_AP', cd: 'mayuCd', cdMax: 'MAYU_CD', kind: 'none', maxLv: 1 },
+  kenpa: { name: '剣波', ap: 'KENPA_AP', cd: 'kenpaCd', cdMax: 'KENPA_CD', kind: 'dmg', maxLv: 5 },
+  spin: { name: '回転斬り', ap: 'SPIN_AP', cd: 'spinCd', cdMax: 'SPIN_CD', kind: 'dmg', maxLv: 5 },
+  homura: { name: '焔', ap: 'HOMURA_AP', cd: 'homuraCd', cdMax: 'HOMURA_CD', kind: 'dmg', maxLv: 5 },
+  raijin: { name: '落雷', ap: 'RAIJIN_AP', cd: 'raijinCd', cdMax: 'RAIJIN_CD', kind: 'dmg', maxLv: 5 },
+  tri: { name: '三連剣波', ap: 'TRI_AP', cd: 'triCd', cdMax: 'TRI_CD', kind: 'dmg', maxLv: 5 },
+  dash: { name: 'ロックオン突撃', ap: 'DASH_AP', cd: 'dashCd', cdMax: 'DASH_CD', kind: 'dmg', maxLv: 5 },
+  shun: { name: '瞬影', ap: 'SHUN_AP', cd: 'shunCd', cdMax: 'SHUN_CD', kind: 'dmg', maxLv: 5 },
+  tensho: { name: '天衝', ap: 'TENSHO_AP', cd: 'tenshoCd', cdMax: 'TENSHO_CD', kind: 'tensho', maxLv: 3 },   // Lv1=打上げのみ/Lv2=上ダッシュ+斬り1/Lv3=斬り3回
 };
 const SKILL_IDS = Object.keys(SKILL_META);
 const LOCKON_SKILLS = new Set(['dash']);   // ロックオンマーカーを出すスキル(今は突撃のみ。将来の追尾弾等はここに追加)
+// --- スキル恒久強化Lv（meta.skillLv に永続）---
+function skillLv(id) { return Math.max(meta.unlocked.includes(id) ? 1 : 0, (meta.skillLv && meta.skillLv[id]) | 0); }   // 解放済なら最低Lv1
+function lvMul(id) { const a = CONFIG.SKILL_LV_DMG; return a[Math.min(a.length - 1, Math.max(0, skillLv(id) - 1))] || 1; }   // ダメージ系スキルのLv別威力倍率
+function lvDesc(id, lv) { const m = SKILL_META[id]; if (m.kind === 'tensho') return lv >= 3 ? 'その場斬り3回' : lv === 2 ? '上ダッシュ＋斬り1回' : '打ち上げのみ'; if (m.kind === 'dmg') { const a = CONFIG.SKILL_LV_DMG; return `威力 ×${(a[Math.min(a.length - 1, lv - 1)] || 1).toFixed(2)}`; } return ''; }
 // チャーム（金で購入・ノッチ枠内で装着）。効果は各所が hasCharm() を参照
 const CHARMS = [
   { id: 'djump', name: '二段ジャンプ', notch: 2, gold: 30 },
@@ -190,7 +197,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyH') { inHideout = true; hideoutCursor = 1; }                    // デバッグ：横穴を直接開く(鍵/しがみつき不要)
   if (e.code === 'KeyL') { const st = [1, 1.2, 1.5, 2]; slashReach = st[(st.indexOf(slashReach) + 1) % st.length]; }   // デバッグ：斬撃の射程倍率を巡回(1→1.2→1.5→2)
   if (e.code === 'KeyJ') dashMul = dashMul === 1 ? 1.5 : 1;   // デバッグ：突撃の飛距離 1↔1.5 切替(スキルUP強化版の確認)
-  if (e.code === 'KeyV') tenshoLv = tenshoLv >= 3 ? 1 : tenshoLv + 1;   // デバッグ：天衝Lv 1→2→3 巡回
+  if (e.code === 'KeyV') { meta.skillLv.tensho = skillLv('tensho') >= 3 ? 1 : skillLv('tensho') + 1; saveMeta(); }   // デバッグ：天衝Lv 1→2→3 巡回(meta直接)
   if (e.code === 'KeyC') { chainDemo = 0; chainDemoT = 0; }   // デバッグ：チェイン連続デモ開始(AP無視)
   if (e.code === 'KeyQ' && player.state === 'cling' && player.keys > 0) { player.keys--; inHideout = true; hideoutCursor = 1; saveMeta(); }  // 横穴へ(Eはポゴ爆弾に使うのでQへ移設)
 });
@@ -236,7 +243,7 @@ SPRITE_KEYS.forEach(s => { const img = new Image(); img.ok = false; img.onload =
 const SLASH_FRAMES = 5, SLASH_H = 120, SLASH_OFF = 40;    // OFF=狙い方向への前出し量
 let slashReach = 1;   // 射程倍率：攻撃方向(ローカルx)へ見た目も当たり判定も伸ばす。1=基準。Longnail等の射程UP時に上げるだけ(再生成不要)
 let dashMul = 1;   // 突撃の飛距離倍率(索敵範囲/前方距離/最大速)。スキルUPで上げる想定。デバッグJで 1↔1.5 切替
-let tenshoLv = 3;   // 天衝の強化段(企画書のLv1〜5概念)。Lv1=打上げのみ/Lv2=+追従斬り1/Lv3=+3回。当面デバッグVで 1→2→3 巡回
+// 天衝の強化段は meta.skillLv.tensho（店で恒久購入・skillLv('tensho')で参照）。デバッグVで 1→2→3 巡回
 const slashImgs = [];
 for (let i = 0; i < SLASH_FRAMES; i++) { const img = new Image(); img.ok = false; img.onload = () => img.ok = true; img.src = `assets/sprites/fx/slash_${i}.png?v=${SPRITE_VER}`; slashImgs.push(img); }
 // 暗殺者の突撃斬撃：ソニックブーム5コマ(小→ピーク→減衰)。跳躍の進行で送る
@@ -294,8 +301,9 @@ let meta = Object.assign({
   gold: 0, sp: 0, bestHeight: 0,
   heartShards: 0, apShards: 0, heartsBonus: 0, apBonus: 0,
   unlocked: ['dash', 'shun', 'tensho', 'mayu', 'kenpa', 'spin', 'homura'], slots: { W: 'dash', A: 'spin', S: 'shun', D: 'tensho' },
-  ownedCharms: [], equippedCharms: [], notchMax: 3,
+  skillLv: {}, ownedCharms: [], equippedCharms: [], notchMax: 3,
 }, loadMeta());
+if (!meta.skillLv) meta.skillLv = {};
 for (const id of ['dash', 'shun', 'tensho']) if (!meta.unlocked.includes(id)) meta.unlocked.push(id);   // 突撃/瞬影/天衝は既存セーブにも解放
 meta.unlocked = meta.unlocked.filter(id => id !== 'shikku');                                      // 疾駆は専用キー(ろ/RB)のコア能力へ＝枠スキルから除去
 for (const d in meta.slots) if (meta.slots[d] === 'shikku') meta.slots[d] = 'kenpa';              // 旧セーブで疾駆が枠に入ってたら戻す
@@ -305,6 +313,7 @@ if (!meta.fixSpinA) { meta.slots.A = 'spin'; meta.fixSpinA = true; saveMeta(); }
 meta.gold = 99999; meta.sp = 99999;   // 【開発用】金/SPを常時潤沢に(店検証)。リリース時に削除
 meta.unlocked = meta.unlocked.filter(id => id !== 'bomb');                                        // ポゴ爆弾は専用ボタンM(チャージ式)へ移行＝枠スキルから除去
 for (const d in meta.slots) if (meta.slots[d] === 'bomb') meta.slots[d] = 'spin';                 // 旧セーブで爆弾が枠に入ってたら戻す
+for (const id of meta.unlocked) { const mx = (SKILL_META[id] || {}).maxLv || 1; meta.skillLv[id] = Math.min(mx, Math.max(1, meta.skillLv[id] | 0)); }   // 解放済スキルは最低Lv1・上限maxLvにclamp(旧/不正セーブ補正)。解放リスト確定後に実行
 if (!meta.fixDashW) { for (const d in meta.slots) if (meta.slots[d] === 'dash') meta.slots[d] = 'mayu'; meta.slots.W = 'dash'; meta.fixDashW = true; saveMeta(); }   // ロックオン突撃をW枠へ確実に(既存セーブで枠落ちしてた不具合の修正・1回だけ)
 meta.heartsBonus = Math.min(Math.max(0, meta.heartsBonus | 0), CONFIG.HEARTS_CAP - CONFIG.HEARTS_MAX);   // 器進行を上限(=10器)内にclamp＝旧/不正セーブも自動補正
 const maxQ = () => (CONFIG.HEARTS_MAX + meta.heartsBonus) * CONFIG.QPH;   // 最大HP(クォーター)
@@ -364,15 +373,15 @@ function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONF
   else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
 
 // --- スキル発動（Ctrl+WASD から呼ばれる）---
-function castKenpa() { const p = player; if (p.kenpaCd > 0 || Math.floor(p.ap) < CONFIG.KENPA_AP) return; p.ap -= CONFIG.KENPA_AP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT, pierce: 0 }); }
-function castHomura() { const p = player; if (p.homuraCd > 0 || Math.floor(p.ap) < CONFIG.HOMURA_AP) return; p.ap -= CONFIG.HOMURA_AP; p.homuraCd = CONFIG.HOMURA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.HOMURA_V, vy: 0, r: CONFIG.HOMURA_R, alive: true, friendly: true, mult: CONFIG.HOMURA_MULT, pierce: CONFIG.HOMURA_PIERCE, flame: true }); }
+function castKenpa() { const p = player; if (p.kenpaCd > 0 || Math.floor(p.ap) < CONFIG.KENPA_AP) return; p.ap -= CONFIG.KENPA_AP; p.kenpaCd = CONFIG.KENPA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy: 0, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.KENPA_MULT * lvMul('kenpa'), pierce: 0 }); }
+function castHomura() { const p = player; if (p.homuraCd > 0 || Math.floor(p.ap) < CONFIG.HOMURA_AP) return; p.ap -= CONFIG.HOMURA_AP; p.homuraCd = CONFIG.HOMURA_CD; projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.HOMURA_V, vy: 0, r: CONFIG.HOMURA_R, alive: true, friendly: true, mult: CONFIG.HOMURA_MULT * lvMul('homura'), pierce: CONFIG.HOMURA_PIERCE, flame: true }); }
 function castSpin() { const p = player; if (p.spinCd > 0 || Math.floor(p.ap) < CONFIG.SPIN_AP) return; p.ap -= CONFIG.SPIN_AP; p.spinCd = CONFIG.SPIN_CD; p.spinTimer = CONFIG.SPIN_ACTIVE; p.spinHit = new Set(); shake = Math.max(shake, 5); }   // 発動だけ。当たり判定は時計回りの掃引でupdate側(当たる毎にヒットストップ＋一時空中停止)
 function castMayu() { const p = player; if (p.mayuCd > 0 || Math.floor(p.ap) < CONFIG.MAYU_AP) return; p.ap -= CONFIG.MAYU_AP; p.mayuCd = CONFIG.MAYU_CD; p.mayuTimer = CONFIG.MAYU_DUR; }
 function castRaijin() { const p = player; if (p.raijinCd > 0 || Math.floor(p.ap) < CONFIG.RAIJIN_AP) return; p.ap -= CONFIG.RAIJIN_AP; p.raijinCd = CONFIG.RAIJIN_CD;
   const near = enemies.filter(e => e.alive && e.y > cameraY - 20 && e.y < cameraY + H + 20).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, CONFIG.RAIJIN_TARGETS);
-  for (const e of near) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.RAIJIN_MULT); if (near.length) shake = Math.max(shake, 6); }
+  for (const e of near) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.RAIJIN_MULT * lvMul('raijin')); if (near.length) shake = Math.max(shake, 6); }
 function castTri() { const p = player; if (p.triCd > 0 || Math.floor(p.ap) < CONFIG.TRI_AP) return; p.ap -= CONFIG.TRI_AP; p.triCd = CONFIG.TRI_CD;
-  for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT, pierce: 0 }); }
+  for (const vy of [-CONFIG.TRI_VY_SPREAD, 0, CONFIG.TRI_VY_SPREAD]) projectiles.push({ x: p.x + p.facing * p.w / 2, y: p.y, vx: p.facing * CONFIG.KENPA_V, vy, r: CONFIG.KENPA_R, alive: true, friendly: true, mult: CONFIG.TRI_MULT * lvMul('tri'), pierce: 0 }); }
 function lockTarget() {   // 突進の自動ロックオン対象＝索敵範囲内で最寄りの生きてる敵(マーカーとcastDashで共有)
   const p = player; let tgt = null, best = CONFIG.DASH_RANGE * dashMul;   // dashMul=飛距離倍率(スキルUP/デバッグ)
   for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < best) { best = d; tgt = e; } }
@@ -396,7 +405,7 @@ function castTensho() { const p = player; if (!p || p.state === 'fallStun' || p.
   const ub = upBox();   // 上攻撃の判定箱で当たった敵を真上へ打ち上げ(射程外でも発動自体は成功＝失敗なし)
   for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue; if (overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.TENSHO_MULT, -Math.PI / 2); e.launched = CONFIG.TENSHO_LAUNCH_T; e.launchTargetY = e.y - CONFIG.TENSHO_LAUNCH_DIST; } }
   shake = Math.max(shake, 6);
-  if (tenshoLv >= 2) { p.state = 'tensho'; p.tenshoPhase = 'dashup'; p.tenshoT = CONFIG.TENSHO_DASH_T; p.tenshoSlashLeft = tenshoLv >= 3 ? 3 : 1; p.tenshoSlashT = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, 0.1); }   // Lv2+：上へ高速ダッシュ→その場斬り(Lv1は打ち上げのみ・位置不変)
+  const tlv = skillLv('tensho'); if (tlv >= 2) { p.state = 'tensho'; p.tenshoPhase = 'dashup'; p.tenshoT = CONFIG.TENSHO_DASH_T; p.tenshoSlashLeft = tlv >= 3 ? 3 : 1; p.tenshoSlashT = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, 0.1); }   // Lv2+：上へ高速ダッシュ→その場斬り(Lv1は打ち上げのみ・位置不変)
 }
 function bombChargeK(charge) { return Math.min(1, Math.max(0, (charge - CONFIG.BOMB_CHARGE_MIN) / (CONFIG.BOMB_CHARGE_MAX - CONFIG.BOMB_CHARGE_MIN))); }   // 押下時間→0..1(MIN以下=0=真下)
 function throwBomb(charge) { const p = player; if (p.bombCd > 0 || Math.floor(p.ap) < CONFIG.BOMB_AP) return; p.ap -= CONFIG.BOMB_AP; p.bombCd = CONFIG.BOMB_CD;
@@ -428,7 +437,7 @@ const CHAIN_DEMO = [
   { g: 0.75, f: POGO },                                                         // ③ポゴ＝ボスを踏んで跳ね上げ(下→上)→落下
   { g: 0.75, f: POGO },                                                         // ④落下→ポゴ(ジャグル・真上維持)
   { g: 0.60, f: POGO },                                                         // ⑤落下→ポゴ(ジャグル)
-  { g: 0.50, f: () => { tenshoLv = 3; player.tenshoCd = 0; castTensho(); } },   // ⑥天衝Lv3＝大きく打ち上げ直し(UP)
+  { g: 0.50, f: () => { meta.skillLv.tensho = 3; player.tenshoCd = 0; castTensho(); } },   // ⑥天衝Lv3＝大きく打ち上げ直し(UP)
   { g: 0.30, f: () => { player.dashCd = 0; castDash(); } },                     // ⑦突撃で再度ボスへ
   { g: 0.20, f: () => { player.shunCd = 0; castShun(); } },                     // ⑧瞬影で真上へ
   { g: 0.12, f: () => { player.bombCd = 0; throwBomb(0); } },                   // ⑨E=爆弾を真下に
@@ -496,7 +505,7 @@ function update(dt) {
       const bx = p.x + p.facing * (p.w / 2 + CONFIG.SHUN_REACH / 2);   // 前方の斬りhitbox
       for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue;
         if (overlap(bx, p.y, CONFIG.SHUN_REACH, CONFIG.SHUN_H, e.x, e.y, e.w, e.h)) {
-          hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SHUN_MULT);
+          hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SHUN_MULT * lvMul('shun'));
           p.x = e.x; p.y = e.y - (p.h / 2 + CONFIG.POGO_REACH + CONFIG.POGO_H * slashReach / 2);   // 当てた敵の真上(=ポゴ範囲)へ
           p.vx = 0; p.vy = 0; p.shunHit = true; p.shunVanish = CONFIG.SHUN_VANISH; p.iframe = Math.max(p.iframe, CONFIG.SHUN_VANISH + CONFIG.SHUN_BLINK_IFR); shake = Math.max(shake, 6);
           break;
@@ -554,7 +563,7 @@ function update(dt) {
     for (const e of enemies) { if (!e.alive || e.dead || e.gdeath || (p.spinHit && p.spinHit.has(e))) continue;
       if (Math.hypot(e.x - p.x, e.y - p.y) > CONFIG.SPIN_R + e.w / 2) continue;
       let ea = (Math.atan2(e.y - p.y, e.x - p.x) - START) % 6.2832; if (ea < 0) ea += 6.2832;   // 上基準の時計回り角[0,2π)
-      if (ea <= swept) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT); (p.spinHit || (p.spinHit = new Set())).add(e); }   // 掃引が通過した敵を斬る
+      if (ea <= swept) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT * lvMul('spin')); (p.spinHit || (p.spinHit = new Set())).add(e); }   // 掃引が通過した敵を斬る
     }
   }
   p.x += p.vx * dt; p.y += p.vy * dt;
@@ -629,7 +638,7 @@ function update(dt) {
     if (p.pogoTimer > 0 && !p.pogoHitThisSwing && overlap(pg.x, pg.y, pg.w, pg.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.POGO_MULT, Math.PI / 2); p.vy = CONFIG.POGO_BOUNCE; p.pogoHitThisSwing = true; p.pogoTimer = 0; p.coyote = 0; shake = Math.max(shake, 4); }   // ポゴ=下向き斬り
     if (e.alive && p.upTimer > 0 && !p.upHitThisSwing && overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.UPATK_MULT, -Math.PI / 2);   // 上攻撃=上向き斬り
     if (e.alive && p.nailTimer > 0 && !p.nailHitThisSwing && overlap(nb.x, nb.y, nb.w, nb.h, e.x, e.y, e.w, e.h)) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.NAIL_MULT);
-    if (e.alive && p.state === 'dash' && p.dashHit && !p.dashHit.has(e) && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.DASH_MULT, Math.atan2(p.dashVy, p.dashVx)); p.dashHit.add(e); }   // ロックオン突撃：突進方向に斬る
+    if (e.alive && p.state === 'dash' && p.dashHit && !p.dashHit.has(e) && overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.DASH_MULT * lvMul('dash'), Math.atan2(p.dashVy, p.dashVx)); p.dashHit.add(e); }   // ロックオン突撃：突進方向に斬る
     if (e.alive) { const dq = e.type === 'obstacle' ? CONFIG.DMG_OBSTACLE : e.type === 'floater' ? CONFIG.DMG_FLOATER : e.type === 'attacker' ? CONFIG.DMG_ATTACKER : e.type === 'assassin' ? CONFIG.DMG_ASSASSIN : e.type === 'rock' ? CONFIG.DMG_ROCK : e.type === 'ghost' ? CONFIG.DMG_GHOST : e.type === 'crawler' ? CONFIG.DMG_CRAWLER : e.type === 'boss' ? CONFIG.DMG_BOSS : CONFIG.DMG_TARGET; if (overlap(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h)) { if (hasCharm('kiba') && e.flash <= 0) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.KIBA_MULT); if (e.alive && dq > 0) { const kx = p.x - e.x, ky = p.y - e.y, kd = Math.hypot(kx, ky); const ux = kd > 1 ? kx / kd : 0, uy = kd > 1 ? ky / kd : -1; damage(dq, uy * CONFIG.ENEMY_KB, ux * CONFIG.ENEMY_KB); }   /* 被ダメした時だけ的の逆へ方向KB(damage内でiframe尊重＝1ヒット1回・乗れない)。ポゴ等で被弾しなければ無干渉 */   /* 的に当たったら必ず爆心の逆へ弾く=乗れない(iframe中も弾く)＋ダメージ(iframe尊重) */ if (e.alive) { const ox = (p.w + e.w) / 2 - Math.abs(p.x - e.x), oy = (p.h + e.h) / 2 - Math.abs(p.y - e.y); if (ox > 0 && oy > 0) { if (ox <= oy) p.x += p.x < e.x ? -ox : ox; else p.y += p.y < e.y ? -oy : oy; } } } }   // 重なり解消＝貫通防止(無敵中も押し出す)
   }
   if (p.upTimer > 0) p.upHitThisSwing = true;
@@ -897,7 +906,7 @@ function render() {
   ctx.restore();
   if (hp0flash > 0) { ctx.fillStyle = `rgba(200,40,40,${0.4 * Math.max(0, hp0flash / 0.5)})`; ctx.fillRect(0, 0, W, H); }
   drawHUD();
-  if (SANDBOX) { ctx.fillStyle = 'rgba(126,232,192,.85)'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText('SKILL SANDBOX', W / 2, 22); ctx.font = '11px system-ui'; ctx.fillStyle = chainDemo >= 0 ? '#ffd24a' : 'rgba(126,232,192,.6)'; ctx.fillText(`天衝Lv ${tenshoLv} (V)  ｜  C=チェインデモ${chainDemo >= 0 ? ' ▶再生中' : ''}`, W / 2, 38); ctx.textAlign = 'left'; }
+  if (SANDBOX) { ctx.fillStyle = 'rgba(126,232,192,.85)'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText('SKILL SANDBOX', W / 2, 22); ctx.font = '11px system-ui'; ctx.fillStyle = chainDemo >= 0 ? '#ffd24a' : 'rgba(126,232,192,.6)'; ctx.fillText(`天衝Lv ${skillLv('tensho')} (V)  ｜  C=チェインデモ${chainDemo >= 0 ? ' ▶再生中' : ''}`, W / 2, 38); ctx.textAlign = 'left'; }
   { const boss = enemies.find(e => e.type === 'boss' && e.alive && e.y > cameraY - 80 && e.y < cameraY + H + 80); if (boss) { const bw = W - 80, bx = 40, byy = 92; ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(bx - 2, byy - 2, bw + 4, 12); ctx.fillStyle = '#6c2bd9'; ctx.fillRect(bx, byy, bw * Math.max(0, boss.hp / boss.hpMax), 8); ctx.strokeStyle = '#b794f6'; ctx.lineWidth = 1; ctx.strokeRect(bx, byy, bw, 8); ctx.fillStyle = '#cbb6f0'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('BOSS', W / 2, byy - 3); ctx.textAlign = 'left'; } }
   if (inHideout) drawHideout();
   else if (skillMod()) drawSkillRadial();
@@ -955,6 +964,14 @@ function buildHideoutRows() {
   rows.push({ header: '── スキル（SP解放 / 枠割当）──' });
   for (const id of SKILL_IDS) if (!meta.unlocked.includes(id)) rows.push({ label: `解放: ${SKILL_META[id].name}`, cost: `SP${CONFIG.UNLOCK_SP}`, can: meta.sp >= CONFIG.UNLOCK_SP, act: () => { meta.sp -= CONFIG.UNLOCK_SP; meta.unlocked.push(id); } });
   for (const dir of ['W', 'A', 'S', 'D']) rows.push({ label: `枠 ${dir}: ${SKILL_META[meta.slots[dir]].name}  ▸切替`, cost: '', can: meta.unlocked.length > 1, act: () => { const u = meta.unlocked, i = u.indexOf(meta.slots[dir]); meta.slots[dir] = u[(i + 1) % u.length]; } });
+  rows.push({ header: '── スキル強化（SPで恒久Lv↑）──' });
+  for (const id of meta.unlocked) {
+    const m = SKILL_META[id]; if (!m || (m.maxLv || 1) <= 1) continue;   // Lv強化が無いスキル(守護の繭等)は出さない
+    const lv = skillLv(id), mx = m.maxLv;
+    if (lv >= mx) { rows.push({ label: `${m.name}  Lv${lv}/${mx}  (${lvDesc(id, lv)})`, cost: 'MAX', can: false }); continue; }
+    const cost = CONFIG.SKILL_LV_COST[Math.min(CONFIG.SKILL_LV_COST.length - 1, lv - 1)];
+    rows.push({ label: `強化: ${m.name}  Lv${lv}→${lv + 1}  (${lvDesc(id, lv + 1)})`, cost: `SP${cost}`, can: meta.sp >= cost, act: () => { meta.sp -= cost; meta.skillLv[id] = lv + 1; } });
+  }
   rows.push({ header: `── チャーム（金購入/装着・ノッチ ${notchUsed()}/${meta.notchMax}）──` });
   rows.push({ label: 'ノッチ拡張 +1', cost: `◆${CONFIG.NOTCH_EXPAND_GOLD}`, can: meta.gold >= CONFIG.NOTCH_EXPAND_GOLD, act: () => { meta.gold -= CONFIG.NOTCH_EXPAND_GOLD; meta.notchMax++; } });
   for (const c of CHARMS) {
