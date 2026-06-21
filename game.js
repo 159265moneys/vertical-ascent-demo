@@ -364,7 +364,9 @@ const INK_ENV = {
   whip: u => Math.pow(1 - u, 0.7) * Math.min(1, u * 7), // 尾を引く＝根本太く先細
   crescent: u => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.82)), 1.25),   // 三日月＝両端を必ず尖らせる(線形立上り=ポイント)＋腹は前寄り(コンマ)
   streak: u => Math.pow(Math.sin(Math.PI * u), 1.2),    // 閃光＝両端鋭い直線(尖らせる)
+  sweep: u => Math.pow(u, 0.5),                          // 回転掃引＝尾(細)→先端(太)。先頭は別途グローで白熱
 };
+const SPIN_BLOOM = [[2.4, 0.06], [1.5, 0.13], [1, 0.92]];   // 回転掃引バンドのブルーム層
 const CRESC_BLOOM = [[3.6, 0.04], [2.3, 0.08], [1.4, 0.16], [1, 0.98]];   // 三日月のブルーム層 [太さ倍率, α]（外→内で白熱・広いソフト層を足して輝き増)
 const STREAK_BLOOM = [[3.4, 0.05], [2, 0.1], [1, 1]];                       // 閃光のブルーム層
 // 曲線(2次ベジェ)の背骨に沿って太さenvelopeで左右オフセットした多角形を塗る＝Gペンの線。screen座標で描画(ctxはグローバル)
@@ -938,9 +940,10 @@ function render() {
   if (p.state === 'tensho' && p.tenshoPhase === 'dashup') drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.tenshoT / CONFIG.TENSHO_DASH_T, 'up');   // 天衝の上ダッシュ斬り(その場斬りはnailTimerでdrawSlashされる)
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ
   if (p.state === 'shun') drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.shunT / CONFIG.SHUN_DUR, p.facing < 0 ? 'left' : 'right');   // 瞬影の踏み込み斬り
-  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, end = START + prog * 6.2832, cyp = sy(p.y);   // 時計回りに伸びる弧
-    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,255,255,${0.75 - 0.35 * prog})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, cyp, CONFIG.SPIN_R, START, end); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.arc(p.x + Math.cos(end) * CONFIG.SPIN_R, cyp + Math.sin(end) * CONFIG.SPIN_R, 4.5, 0, 6.2832); ctx.fill(); ctx.restore(); }   // 先端の明点
+  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, sweep = prog * 6.2832, lead = START + sweep, cyp = sy(p.y), a = prog < 0.82 ? 1 : Math.max(0, 1 - (prog - 0.82) / 0.18);   // 時計回りに伸びる掃引
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const Lr of SPIN_BLOOM) inkCrescent(p.x, cyp, CONFIG.SPIN_R, START, sweep, 17 * Lr[0], `rgba(255,255,255,${Lr[1] * a})`, INK_ENV.sweep);   // 光る掃引バンド(尾細→先太)
+    const lx = p.x + Math.cos(lead) * CONFIG.SPIN_R, ly = cyp + Math.sin(lead) * CONFIG.SPIN_R, g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 28); g.addColorStop(0, `rgba(255,255,255,${0.95 * a})`); g.addColorStop(1, 'rgba(210,232,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, 28, 0, 6.2832); ctx.fill(); ctx.restore(); }   // 先端の白熱グロー
   if (p.state === 'dash' && p.dashIfr) slashArc(p.x, sy(p.y), Math.atan2(p.dashVy, p.dashVx), 0.92, 1.15, 1.15);   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ・手続き三日月)
   else if (p.state === 'dash' && !p.dashIfr) { const img = sprites[spriteKey()]; if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height), fy = sy(p.y) + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC; ctx.save(); ctx.globalAlpha = 0.22; for (const k of [1, 2]) ctx.drawImage(img, p.x - p.dashVx * 0.012 * k - dw / 2, fy, dw, dh); ctx.restore(); } }   // 疾駆=ただの移動＝残像のみ(攻撃/ダメージ無し)
   if (skillMod() && Object.values(meta.slots).some(id => LOCKON_SKILLS.has(id))) { const t = lockTarget(); if (t) {   // ロックオンマーカー：スキル修飾(Space/LB)押下中＝ロックオン系スキルを撃とうとしてる時だけ表示
