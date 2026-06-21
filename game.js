@@ -39,7 +39,7 @@ const CONFIG = {
   // --- スキル②（Ctrl+WASD の4枠）---
   KENPA_AP: 1, KENPA_MULT: 1.4, KENPA_V: 640, KENPA_CD: 0.22, KENPA_R: 9,          // A：剣波（速い弾・軽）
   HOMURA_AP: 3, HOMURA_MULT: 1.8, HOMURA_V: 380, HOMURA_CD: 0.5, HOMURA_R: 16, HOMURA_PIERCE: 2, // D：焔（遅い大弾・貫通・重）
-  SPIN_AP: 2, SPIN_MULT: 1.2, SPIN_R: 96, SPIN_ACTIVE: 0.14, SPIN_CD: 0.40,        // S：回転斬り（周囲AoE・時計回り掃引）
+  SPIN_AP: 2, SPIN_MULT: 1.2, SPIN_R: 72, SPIN_ACTIVE: 0.14, SPIN_CD: 0.40,        // S：回転斬り（円の内側=全部AoE・円周は小さめ）
   MAYU_AP: 2, MAYU_DUR: 4.0, MAYU_REDUCE: 0.5, MAYU_CD: 6.0,                       // W：守護の繭（被ダメ減）
   RAIJIN_AP: 2, RAIJIN_MULT: 1.5, RAIJIN_TARGETS: 3, RAIJIN_CD: 0.5,               // 落雷：近い敵N体に即着弾
   TRI_AP: 2, TRI_MULT: 1.1, TRI_CD: 0.3, TRI_VY_SPREAD: 150,                       // 三連剣波：前方3発の扇
@@ -617,13 +617,10 @@ function update(dt) {
 
   if (autoRise) { p.state = 'air'; p.clingWall = 0; p.fallStun = 0; p.grounded = false; p.vy = -2000; p.vx = inX * 260; p.iframe = CONFIG.IFRAME; }   // デバッグ：一定速で上昇（左右は手動微調整可）
   { const jHeld = keys['ShiftRight'] || pad.jump; if (p.jumpHeld && !jHeld && p.vy < 0) p.vy *= CONFIG.JUMP_CUT; if (!jHeld || p.vy >= 0) p.jumpHeld = false; }   // 可変ジャンプ：上昇中に離すと上昇速度カット＝ミニジャンプ。長押し/頂点で確定
-  if (p.spinTimer > 0) {   // 回転斬り：一時空中停止(放ってる感)＋時計回りに掃引して当たった敵を順に斬る(各ヒットでヒットストップ)
+  if (p.spinTimer > 0) {   // 回転斬り：一時空中停止(放ってる感)＋円の内側=全部が攻撃範囲(AoE)。中の敵を1回ずつ斬る
     p.vy = 0; p.vx *= 0.82;   // 空中停止
-    const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, swept = prog * 6.2832;   // 上から時計回り
     for (const e of enemies) { if (!e.alive || e.dead || e.gdeath || (p.spinHit && p.spinHit.has(e))) continue;
-      if (Math.hypot(e.x - p.x, e.y - p.y) > CONFIG.SPIN_R + e.w / 2) continue;
-      let ea = (Math.atan2(e.y - p.y, e.x - p.x) - START) % 6.2832; if (ea < 0) ea += 6.2832;   // 上基準の時計回り角[0,2π)
-      if (ea <= swept) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT * lvMul('spin')); (p.spinHit || (p.spinHit = new Set())).add(e); }   // 掃引が通過した敵を斬る
+      if (Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.SPIN_R + e.w / 2) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.SPIN_MULT * lvMul('spin')); (p.spinHit || (p.spinHit = new Set())).add(e); }   // 円内に入ってる敵＝即ヒット
     }
   }
   p.x += p.vx * dt; p.y += p.vy * dt;
@@ -955,10 +952,12 @@ function render() {
   if (p.state === 'tensho' && p.tenshoPhase === 'dashup') drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.tenshoT / CONFIG.TENSHO_DASH_T, 'up');   // 天衝の上ダッシュ斬り(その場斬りはnailTimerでdrawSlashされる)
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ
   if (p.state === 'shun') drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.shunT / CONFIG.SHUN_DUR, p.facing < 0 ? 'left' : 'right');   // 瞬影の踏み込み斬り
-  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, START = -Math.PI / 2, sweep = prog * 6.2832, lead = START + sweep, cyp = sy(p.y), a = prog < 0.82 ? 1 : Math.max(0, 1 - (prog - 0.82) / 0.18);   // 時計回りに伸びる掃引
+  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, cyp = sy(p.y), Rr = CONFIG.SPIN_R, a = prog < 0.72 ? 1 : Math.max(0, 1 - (prog - 0.72) / 0.28), spin = prog * 7;   // 円の内側を覆うAoE
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const Lr of SPIN_BLOOM) inkCrescent(p.x, cyp, CONFIG.SPIN_R, START, sweep, 17 * Lr[0], `rgba(255,255,255,${Lr[1] * a})`, INK_ENV.sweep);   // 光る掃引バンド(尾細→先太)
-    const lx = p.x + Math.cos(lead) * CONFIG.SPIN_R, ly = cyp + Math.sin(lead) * CONFIG.SPIN_R, g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 28); g.addColorStop(0, `rgba(255,255,255,${0.95 * a})`); g.addColorStop(1, 'rgba(210,232,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, 28, 0, 6.2832); ctx.fill(); ctx.restore(); }   // 先端の白熱グロー
+    const g = ctx.createRadialGradient(p.x, cyp, 0, p.x, cyp, Rr * 1.02); g.addColorStop(0, `rgba(255,255,255,${0.34 * a})`); g.addColorStop(0.55, `rgba(220,235,255,${0.16 * a})`); g.addColorStop(1, 'rgba(200,225,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, cyp, Rr * 1.02, 0, 6.2832); ctx.fill();   // 面を覆う発光円盤
+    for (let i = 0; i < 5; i++) { const ang = spin + i * 1.2566; inkCrescent(p.x, cyp, Rr * 0.6, ang, 1.7, 13, `rgba(255,255,255,${0.5 * a})`, INK_ENV.crescent); }   // 回転する三日月を5本＝斬りで面を覆う
+    ctx.strokeStyle = `rgba(255,255,255,${0.7 * a})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, cyp, Rr, 0, 6.2832); ctx.stroke();   // 縁のリング＝攻撃範囲が分かる
+    ctx.restore(); }
   if (p.state === 'dash' && p.dashIfr) slashArc(p.x, sy(p.y), Math.atan2(p.dashVy, p.dashVx), 0.92, 1.15, 1.15);   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ・手続き三日月)
   else if (p.state === 'dash' && !p.dashIfr) { const img = sprites[spriteKey()]; if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height), fy = sy(p.y) + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC; ctx.save(); ctx.globalAlpha = 0.22; for (const k of [1, 2]) ctx.drawImage(img, p.x - p.dashVx * 0.012 * k - dw / 2, fy, dw, dh); ctx.restore(); } }   // 疾駆=ただの移動＝残像のみ(攻撃/ダメージ無し)
   if (skillMod() && Object.values(meta.slots).some(id => LOCKON_SKILLS.has(id))) { const t = lockTarget(); if (t) {   // ロックオンマーカー：スキル修飾(Space/LB)押下中＝ロックオン系スキルを撃とうとしてる時だけ表示
