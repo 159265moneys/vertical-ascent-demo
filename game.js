@@ -329,7 +329,7 @@ function reset() {
     pogoTimer: 0, pogoCd: 0, pogoHitThisSwing: false,
     upTimer: 0, upCd: 0, upHitThisSwing: false,
     nailTimer: 0, nailCd: 0, nailHitThisSwing: false,
-    spinTimer: 0, spinCd: 0, spinHit: null, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, shikkuCd: 0, shunCd: 0, shunT: 0, shunHit: false, shunVanish: 0, tenshoCd: 0, tenshoT: 0, tenshoPhase: 'dashup', tenshoSlashLeft: 0, tenshoSlashT: 0, tenshoSlashIdx: 0, tenshoSlashAng: 0, tenshoSlashPose: 'atk', bombCd: 0, bombCharging: false, bombCharge: 0, jumpHeld: false, reclingLock: 0,
+    spinTimer: 0, spinCd: 0, spinHit: null, kenpaCd: 0, homuraCd: 0, mayuCd: 0, mayuTimer: 0, raijinCd: 0, triCd: 0, dashCd: 0, dashTimer: 0, shikkuCd: 0, shunCd: 0, shunT: 0, shunHit: false, shunVanish: 0, tenshoCd: 0, tenshoT: 0, tenshoPhase: 'dashup', tenshoSlashLeft: 0, tenshoSlashT: 0, bombCd: 0, bombCharging: false, bombCharge: 0, jumpHeld: false, reclingLock: 0,
     hpQ: maxQ(), ap: maxAP(), keys: 0, killCount: 0, fallStun: 0, iframe: 0,
   };
   cameraY = -H * CONFIG.CAM_FOLLOW; maxHeight = 0;
@@ -449,18 +449,16 @@ function castShikku() { const p = player; if (!p || p.state === 'fallStun' || p.
   p.dashVx = p.facing * CONFIG.SHIKKU_SPEED; p.dashVy = 0; p.dashTimer = CONFIG.SHIKKU_ACTIVE; p.dashHit = null; p.dashIfr = false; p.state = 'dash'; p.clingWall = 0; }   // HK素マント式：向き方向へ水平ダッシュ(無敵なし=dashIfr false・ダメージなし=dashHit null)
 function castShun() { const p = player; if (!p || p.state === 'fallStun' || p.shunCd > 0 || Math.floor(p.ap) < CONFIG.SHUN_AP) return; p.ap -= CONFIG.SHUN_AP; p.shunCd = CONFIG.SHUN_CD;
   p.state = 'shun'; p.shunT = CONFIG.SHUN_DUR; p.shunHit = false; p.vx = p.facing * CONFIG.SHUN_LUNGE; p.vy = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, CONFIG.SHUN_DUR + 0.04); }   // 踏み込み斬り(state=shun)。当たったらupdateで真上へ瞬間移動
-const TENSHO_FAN = [{ off: 0.5, pose: 'up' }, { off: -0.5, pose: 'pogo' }, { off: 0, pose: 'atk' }];   // 向いてる方の扇：上↗→下↘→横→(斬りごとに角度もスプライトも変える)
-function tenshoSlash() { const p = player; const f = TENSHO_FAN[p.tenshoSlashIdx % TENSHO_FAN.length]; p.tenshoSlashIdx++;
-  const base = p.facing > 0 ? 0 : Math.PI; p.tenshoSlashAng = base - p.facing * f.off; p.tenshoSlashPose = f.pose;   // facing側で上下に振る(off>0=上)
-  p.nailTimer = CONFIG.NAIL_ACTIVE * 0.7; p.nailHitThisSwing = true;   // 自前判定なので通常ヒット抑止
-  for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.TENSHO_SLASH_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.TENSHO_SLASH_MULT, p.tenshoSlashAng);
+function tenshoSlash() { const p = player; p.nailTimer = CONFIG.NAIL_ACTIVE * 0.7; p.nailHitThisSwing = true;   // 向いてる方の水平な横攻撃を1発(自前判定なので通常ヒット抑止)。スプライトは通常⇄横攻撃で振る
+  const ang = p.facing > 0 ? 0 : Math.PI;
+  for (const e of enemies) if (e.alive && !e.dead && !e.gdeath && Math.hypot(e.x - p.x, e.y - p.y) < CONFIG.TENSHO_SLASH_R + e.w / 2) hitEnemy(e, CONFIG.ATK_BASE * CONFIG.TENSHO_SLASH_MULT, ang);
   hitStop = Math.max(hitStop, 0.13); shake = Math.max(shake, 6); }   // 1斬りごとにハッキリ止める(連続でなく「ザシュッ！」と区切る)
 function castTensho() { const p = player; if (!p || p.state === 'fallStun' || p.tenshoCd > 0 || Math.floor(p.ap) < CONFIG.TENSHO_AP) return; p.ap -= CONFIG.TENSHO_AP; p.tenshoCd = CONFIG.TENSHO_CD;
   p.upTimer = CONFIG.UPATK_ACTIVE; p.upCd = CONFIG.UPATK_COOLDOWN; p.upHitThisSwing = true;   // 見た目=普通の上攻撃。打ち上げは自前判定するので通常の上ヒットは抑止
   const ub = upBox();   // 上攻撃の判定箱で当たった敵を真上へ打ち上げ(射程外でも発動自体は成功＝失敗なし)
   for (const e of enemies) { if (!e.alive || e.dead || e.gdeath) continue; if (overlap(ub.x, ub.y, ub.w, ub.h, e.x, e.y, e.w, e.h)) { hitEnemy(e, CONFIG.ATK_BASE * CONFIG.TENSHO_MULT, -Math.PI / 2); e.launched = CONFIG.TENSHO_LAUNCH_T; e.launchTargetY = e.y - CONFIG.TENSHO_LAUNCH_DIST; } }
   shake = Math.max(shake, 6);
-  const tlv = skillLv('tensho'); if (tlv >= 2) { p.state = 'tensho'; p.tenshoPhase = 'dashup'; p.tenshoT = CONFIG.TENSHO_DASH_T; p.tenshoSlashLeft = tlv >= 3 ? 3 : 1; p.tenshoSlashT = 0; p.tenshoSlashIdx = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, 0.1); }   // Lv2+：上へ高速ダッシュ→その場斬り(Lv1は打ち上げのみ・位置不変)
+  const tlv = skillLv('tensho'); if (tlv >= 2) { p.state = 'tensho'; p.tenshoPhase = 'dashup'; p.tenshoT = CONFIG.TENSHO_DASH_T; p.tenshoSlashLeft = tlv >= 3 ? 3 : 1; p.tenshoSlashT = 0; p.clingWall = 0; p.iframe = Math.max(p.iframe, 0.1); }   // Lv2+：上へ高速ダッシュ→その場斬り(Lv1は打ち上げのみ・位置不変)
 }
 function bombChargeK(charge) { return Math.min(1, Math.max(0, (charge - CONFIG.BOMB_CHARGE_MIN) / (CONFIG.BOMB_CHARGE_MAX - CONFIG.BOMB_CHARGE_MIN))); }   // 押下時間→0..1(MIN以下=0=真下)
 function throwBomb(charge) { const p = player; if (p.bombCd > 0 || Math.floor(p.ap) < CONFIG.BOMB_AP) return; p.ap -= CONFIG.BOMB_AP; p.bombCd = CONFIG.BOMB_CD;
@@ -862,7 +860,7 @@ function spriteKey() {
   let act = 'idle';
   if (p.state === 'fallStun') act = 'fall';
   else if (p.state === 'cling') act = 'cling';
-  else if (p.state === 'tensho') act = (p.tenshoPhase === 'slash' ? p.tenshoSlashPose : 'up');   // 天衝：ダッシュ中=上/その場斬り=斬りごとに上↗下↘横→でポーズ切替
+  else if (p.state === 'tensho') act = (p.tenshoPhase === 'slash' ? (p.nailTimer > 0 ? 'atk' : 'idle') : 'up');   // 天衝：ダッシュ中=上/その場斬り=斬り中=横攻撃,間=通常(通常→横攻撃→通常を1発ずつ)
   else if (p.state === 'shun') act = 'atk';   // 瞬影=踏み込み斬り
   else if (p.state === 'dash') act = 'run';   // 疾駆/突撃中は地上横移動(走り)のスプライト
   else if (p.pogoTimer > 0) act = 'pogo';
@@ -947,8 +945,7 @@ function render() {
   if (p.pogoTimer > 0) drawSlash(p.x, sy(p.y) + p.h / 2, 1 - p.pogoTimer / CONFIG.POGO_ACTIVE, 'down');            // 下＝凸を下へ
   if (p.upTimer > 0) drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.upTimer / CONFIG.UPATK_ACTIVE, 'up');                 // 上＝凸を上へ
   if (p.state === 'tensho' && p.tenshoPhase === 'dashup') drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.tenshoT / CONFIG.TENSHO_DASH_T, 'up');   // 天衝の上ダッシュ斬り(その場斬りはnailTimerでdrawSlashされる)
-  if (p.nailTimer > 0) { if (p.state === 'tensho' && p.tenshoPhase === 'slash') { const pr = 1 - p.nailTimer / (CONFIG.NAIL_ACTIVE * 0.7), aa = pr < 0.6 ? 1 : Math.max(0, 1 - (pr - 0.6) / 0.4), gg = 0.85 + Math.min(1, pr / 0.25) * 0.15; slashArc(p.x, sy(p.y), p.tenshoSlashAng, aa, gg, slashReach); }   // 天衝その場斬り＝扇角度で三日月(向いてる方の上↗下↘横→)
-    else drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right'); }   // 前＝凸を進行方向へ
+  if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ(天衝の横斬りもこれ=水平)
   if (p.state === 'shun') drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.shunT / CONFIG.SHUN_DUR, p.facing < 0 ? 'left' : 'right');   // 瞬影の踏み込み斬り
   if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, cyp = sy(p.y), Rr = CONFIG.SPIN_R, a = prog < 0.85 ? 1 : Math.max(0, 1 - (prog - 0.85) / 0.15);   // 回転する斬り＋フェードする軌跡
     const turns = 1.6, lead = -Math.PI / 2 + prog * turns * 6.2832, trailSpan = 4.0, RB = Rr * 0.72, SEG = 18;   // trailSpan<2π＝完全な円にはならない(通り過ぎた所が少し残って消える)
