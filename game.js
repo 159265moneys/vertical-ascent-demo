@@ -949,7 +949,7 @@ function render() {
   if (p.state === 'shun') drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.shunT / CONFIG.SHUN_DUR, p.facing < 0 ? 'left' : 'right');   // 瞬影の踏み込み斬り
   if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, cyp = sy(p.y), a = prog < 0.88 ? 1 : Math.max(0, 1 - (prog - 0.88) / 0.12);   // 通常攻撃の三日月をそのまま回す
     const turns = 1.6, lead = -Math.PI / 2 + prog * turns * 6.2832;
-    slashArc(p.x, cyp, lead, a, 1, slashReach); }
+    slashArc(p.x, cyp, lead, a, 1, slashReach * 1.5); }   // 通常攻撃の三日月を1.5倍で回す
   if (p.state === 'dash' && p.dashIfr) slashArc(p.x, sy(p.y), Math.atan2(p.dashVy, p.dashVx), 0.92, 1.15, 1.15);   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ・手続き三日月)
   else if (p.state === 'dash' && !p.dashIfr) { const img = sprites[spriteKey()]; if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height), fy = sy(p.y) + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC; ctx.save(); ctx.globalAlpha = 0.22; for (const k of [1, 2]) ctx.drawImage(img, p.x - p.dashVx * 0.012 * k - dw / 2, fy, dw, dh); ctx.restore(); } }   // 疾駆=ただの移動＝残像のみ(攻撃/ダメージ無し)
   if (skillMod() && Object.values(meta.slots).some(id => LOCKON_SKILLS.has(id))) { const t = lockTarget(); if (t) {   // ロックオンマーカー：スキル修飾(Space/LB)押下中＝ロックオン系スキルを撃とうとしてる時だけ表示
