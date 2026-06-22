@@ -947,13 +947,14 @@ function render() {
   if (p.state === 'tensho' && p.tenshoPhase === 'dashup') drawSlash(p.x, sy(p.y) - p.h / 2, 1 - p.tenshoT / CONFIG.TENSHO_DASH_T, 'up');   // 天衝の上ダッシュ斬り(その場斬りはnailTimerでdrawSlashされる)
   if (p.nailTimer > 0) drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.nailTimer / CONFIG.NAIL_ACTIVE, p.facing < 0 ? 'left' : 'right');   // 前＝凸を進行方向へ(天衝の横斬りもこれ=水平)
   if (p.state === 'shun') drawSlash(p.x + p.facing * p.w / 2, sy(p.y), 1 - p.shunT / CONFIG.SHUN_DUR, p.facing < 0 ? 'left' : 'right');   // 瞬影の踏み込み斬り
-  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, cyp = sy(p.y), Rr = CONFIG.SPIN_R, a = prog < 0.85 ? 1 : Math.max(0, 1 - (prog - 0.85) / 0.15);   // 回転する斬り＋フェードする軌跡
-    const turns = 1.6, lead = -Math.PI / 2 + prog * turns * 6.2832, trailSpan = 4.0, RB = Rr * 0.72, SEG = 18;   // trailSpan<2π＝完全な円にはならない(通り過ぎた所が少し残って消える)
+  if (p.spinTimer > 0) { const prog = 1 - p.spinTimer / CONFIG.SPIN_ACTIVE, cyp = sy(p.y), Rr = CONFIG.SPIN_R, a = prog < 0.85 ? 1 : Math.max(0, 1 - (prog - 0.85) / 0.15);   // 回転する扇形＋尾を引いて消える軌跡(分割でなく角度グラデ=点にならない)
+    const turns = 1.6, lead = -Math.PI / 2 + prog * turns * 6.2832;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < SEG; i++) { const t = i / (SEG - 1), ang = lead - trailSpan * (1 - t), al = Math.pow(t, 1.5) * a; if (al < 0.012) continue; const w = 4 + 22 * t;   // 尾=細く薄く→先端=太く明るく
-      inkCrescent(p.x, cyp, RB, ang - 0.17, 0.36, w * 2, `rgba(255,255,255,${al * 0.14})`, INK_ENV.crescent);   // グロー
-      inkCrescent(p.x, cyp, RB, ang - 0.17, 0.36, w, `rgba(255,255,255,${al})`, INK_ENV.crescent); }   // コア(通常攻撃と同じ三日月タッチ)
-    const lx = p.x + Math.cos(lead) * RB, ly = cyp + Math.sin(lead) * RB, g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 30); g.addColorStop(0, `rgba(255,255,255,${0.95 * a})`); g.addColorStop(1, 'rgba(210,232,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, 30, 0, 6.2832); ctx.fill();   // 先端の白熱ブレード
+    const cg = ctx.createConicGradient(lead, p.x, cyp);   // ブレード角度から後方(CCW)へ尾を引いてフェードする扇形
+    cg.addColorStop(0.0, `rgba(255,255,255,${0.6 * a})`); cg.addColorStop(0.03, 'rgba(255,255,255,0)');   // 先端=明/前方=無
+    cg.addColorStop(0.55, 'rgba(220,235,255,0)'); cg.addColorStop(0.8, `rgba(225,240,255,${0.16 * a})`); cg.addColorStop(1.0, `rgba(255,255,255,${0.55 * a})`);   // 後方=尾を引いて消える
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(p.x, cyp, Rr, 0, 6.2832); ctx.moveTo(p.x + Rr * 0.1, cyp); ctx.arc(p.x, cyp, Rr * 0.1, 0, 6.2832); ctx.fill('evenodd');   // 環状(中心の白点回避)
+    ctx.strokeStyle = `rgba(255,255,255,${0.95 * a})`; ctx.lineCap = 'round'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, cyp, Rr * 0.9, lead - 0.5, lead); ctx.stroke();   // 先端ブレード=外周の明るい弧(三日月のキラッ)
     ctx.restore(); }
   if (p.state === 'dash' && p.dashIfr) slashArc(p.x, sy(p.y), Math.atan2(p.dashVy, p.dashVx), 0.92, 1.15, 1.15);   // 突撃斬りの白弧(攻撃ダッシュ=dashIfrのみ・手続き三日月)
   else if (p.state === 'dash' && !p.dashIfr) { const img = sprites[spriteKey()]; if (img && img.ok) { const dh = CONFIG.PLAYER_DRAW_H, dw = dh * (img.width / img.height), fy = sy(p.y) + p.h / 2 - dh * CONFIG.SPRITE_FEET_FRAC; ctx.save(); ctx.globalAlpha = 0.22; for (const k of [1, 2]) ctx.drawImage(img, p.x - p.dashVx * 0.012 * k - dw / 2, fy, dw, dh); ctx.restore(); } }   // 疾駆=ただの移動＝残像のみ(攻撃/ダメージ無し)
