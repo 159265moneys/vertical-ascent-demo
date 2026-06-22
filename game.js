@@ -404,6 +404,11 @@ function spawnSparks(x, y, col) {
   for (let i = 0; i < 5; i++) { const a = Math.random() * 6.2832, s = 170 + Math.random() * 240; sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18 + Math.random() * 0.12, maxLife: 0.3, kind: 'shard', len: 16 + Math.random() * 22, grav: 300, drag: 0.86, col }); }
   sparks.push({ x, y, vx: 0, vy: 0, life: 0.2, maxLife: 0.2, kind: 'ring', r: 8, vr: 160, grav: 0, drag: 1, col });
 }
+// 血の滴＝濃い赤・非加算(不透明)・速度方向に伸びる雫(速いほど筋)→重力で弧を描いて落下。dir中心にspread幅で飛散
+function spawnBlood(x, y, dir, n, spread) {
+  for (let i = 0; i < n; i++) { const a = dir + (Math.random() - 0.5) * spread, s = 130 + Math.random() * 360;
+    sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 50, life: 0.3 + Math.random() * 0.32, maxLife: 0.62, kind: 'blood', size: 1.6 + Math.random() * 2.8, grav: 900, drag: 0.965 }); }
+}
 // 着地の砂煙＝足元から左右へ広がる柔らかい粒(dust)＋低い衝撃輪。落下速度vで量/勢いスケール
 function spawnDust(x, y, v) {
   const n = v > 1100 ? 10 : 7, sc = Math.min(1.5, v / 900);
@@ -419,11 +424,12 @@ function spawnCuts(x, y, baseAng) {
   cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(70, 120), wMax: 3, curve: R(-16, 16), alpha: 0.45, life: 0.1, maxLife: 0.1, env: INK_ENV.streak });   // 角度違いのサブ線＝細く薄く
   cuts.push({ type: 'streak', x: x + R(-7, 7), y: y + R(-7, 7), ang: cr(), len: R(60, 105), wMax: 2.5, curve: R(-16, 16), alpha: 0.4, life: 0.09, maxLife: 0.09, env: INK_ENV.streak });   // 同上(もう1本)
 }
-function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); spawnSparks(e.x, e.y, HIT_RED); spawnCuts(e.x, e.y, ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang);   // ザシュッ：強めヒットストップ(威力依存)＋赤い粒子＋切りつけ方向の斬撃線(線は白)
+function hitEnemy(e, dmg, ang) { if (hasCharm('kaishin') && Math.random() < CONFIG.KAISHIN_CHANCE) dmg *= CONFIG.KAISHIN_MULT; e.hp -= dmg; e.flash = 0.14; hitStop = Math.max(hitStop, Math.min(0.14, 0.075 + dmg * 0.03)); shake = Math.max(shake, 6); const a2 = ang === undefined ? (player.facing > 0 ? 0 : Math.PI) : ang; spawnSparks(e.x, e.y, HIT_RED); spawnCuts(e.x, e.y, a2); spawnBlood(e.x, e.y, a2, 6, 2.4);   // ザシュッ：強めヒットストップ(威力依存)＋赤い粒子＋血飛沫(切りつけ方向)＋斬撃線(白)
   player.ap = Math.min(maxAP(), player.ap + CONFIG.AP_ATTACK_GAIN);   // 攻撃でAP回復(時間より速い)
   if (e.hp <= 0 && e.alive && !e.dead && !e.gdeath) {
     for (let i = 0; i < 11; i++) { const aa = Math.random() * 6.2832, s = 180 + Math.random() * 280; sparks.push({ x: e.x, y: e.y, vx: Math.cos(aa) * s, vy: Math.sin(aa) * s, life: 0.24 + Math.random() * 0.18, maxLife: 0.42, kind: 'shard', len: 18 + Math.random() * 28, grav: 260, drag: 0.86, col: HIT_RED }); }   // 撃破＝明るい赤の飛散(大きめ)
     for (let i = 0; i < 8; i++) { const aa = Math.random() * 6.2832, s = 90 + Math.random() * 190; sparks.push({ x: e.x, y: e.y, vx: Math.cos(aa) * s, vy: Math.sin(aa) * s, life: 0.2 + Math.random() * 0.16, maxLife: 0.36, kind: 'spark', grav: 320, drag: 0.9, col: HIT_RED }); }
+    spawnBlood(e.x, e.y, -Math.PI / 2, 18, 6.2832);   // 撃破＝放射状の血飛沫(大きめ・噴き出して落下)
     if (e.type === 'boss') e.alive = false; else if (e.type === 'ghost') { e.gdeath = true; e.gdeathT = 0; } else { e.dead = true; e.vy = CONFIG.DEATH_POP; e.vx = (Math.random() - 0.5) * 140; e.rotV = (Math.random() - 0.5) * 11; e.rot = 0; }
   if (e.type === 'boss') { meta.gold += CONFIG.BOSS_GOLD; meta.sp += CONFIG.BOSS_SP; player.keys += CONFIG.BOSS_KEYS_MIN + Math.floor(Math.random() * (CONFIG.BOSS_KEYS_MAX - CONFIG.BOSS_KEYS_MIN + 1)); shake = CONFIG.SHAKE_FALL; saveMeta(); }   // ボス＝鍵1-3(ストック上限無視)＋金/SP
   else { meta.gold += CONFIG.GOLD[e.type] || 0; meta.sp += CONFIG.SP[e.type] || 0; saveMeta(); player.killCount++; if (player.killCount % CONFIG.KEY_PER_KILLS === 0) player.keys = Math.min(player.keys + 1, CONFIG.KEY_STOCK); } } }
@@ -938,7 +944,11 @@ function render() {
     if (sp.kind === 'ring') { const a = f * 0.5; ctx.strokeStyle = `rgba(${sp.col || '210,230,255'},${a})`; ctx.lineWidth = 2.5 * f + 0.5; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), sp.r, 0, 6.2832); ctx.stroke(); }
     else if (sp.kind === 'shard') { const a = Math.min(1, f * 1.4); inkStroke(sp.x, sy(sp.y), Math.atan2(sp.vy, sp.vx), sp.len * f + 6, 3.2 * f + 0.8, 0, `rgba(${sp.col || '255,255,255'},${a})`); }
     else if (sp.kind === 'dust') { const a = Math.min(1, f) * 0.4; ctx.fillStyle = `rgba(200,208,222,${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 3.4 * (0.6 + f * 0.6), 0, 6.2832); ctx.fill(); }   // 着地の砂煙＝柔らかい灰白(プレイヤー側=据置)
+    else if (sp.kind === 'blood') { /* 血の滴は非加算で別パス描画 */ }
     else { const a = Math.min(1, f * 1.6); ctx.fillStyle = `rgba(${sp.col || '255,248,205'},${a})`; ctx.beginPath(); ctx.arc(sp.x, sy(sp.y), 2.6, 0, 6.2832); ctx.fill(); } } ctx.restore(); }   // 着弾＝丸火花+片+衝撃輪
+  if (sparks.length) { ctx.save(); for (const sp of sparks) { if (sp.kind !== 'blood') continue;   // 血の滴＝非加算(不透明)・濃い赤・速度方向に伸びる雫
+    const f = sp.life / sp.maxLife, a = Math.min(1, f * 1.7) * 0.92, spd = Math.hypot(sp.vx, sp.vy), ang = Math.atan2(sp.vy, sp.vx), w = sp.size * (0.65 + f * 0.45), len = Math.max(w, w + spd * 0.014);
+    ctx.fillStyle = `rgba(176,18,26,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sy(sp.y), len, w, ang, 0, 6.2832); ctx.fill(); } ctx.restore(); }   // 速いほど筋を引く雫→重力で落下
   if (cuts.length) { ctx.save(); ctx.globalCompositeOperation = 'lighter';   // 全部加算＝白く輝く軌跡
     for (const c of cuts) { const f = c.life / c.maxLife, A = Math.min(1, f * 1.4) * c.alpha; if (A <= 0) continue; const cy = sy(c.y);
       if (c.type === 'crescent') { for (const Lr of CRESC_BLOOM) inkCrescent(c.x, cy, c.r, c.a0, c.sweep, c.wMax * Lr[0], `rgba(255,255,255,${Lr[1] * A})`, INK_ENV.crescent); }
